@@ -57,7 +57,7 @@ func TestBuildIPHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	srcIP := net.ParseIP("10.0.0.1").To4()
 	destIP := net.ParseIP("192.168.1.1").To4()
@@ -98,7 +98,7 @@ func TestBuildIPv6Header(t *testing.T) {
 	if err != nil {
 		t.Skip("IPv6 not available")
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	srcIP := net.ParseIP("2001:db8::1")
 	destIP := net.ParseIP("::1")
@@ -140,7 +140,7 @@ func TestBuildUDPHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	payload := []byte("test payload")
 	srcIP := net.ParseIP("127.0.0.1").To4()
@@ -198,7 +198,7 @@ func BenchmarkBuildIPv4Header(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	srcIP := net.ParseIP("10.0.0.1").To4()
 	destIP := net.ParseIP("192.168.1.1").To4()
@@ -221,7 +221,7 @@ func BenchmarkBuildUDPHeader(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	payload := make([]byte, 512)
 	srcIP := net.ParseIP("127.0.0.1").To4()

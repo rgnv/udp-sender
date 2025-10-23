@@ -67,7 +67,13 @@ func main() {
 			"error": err.Error(),
 		})
 	}
-	defer sender.Close()
+	defer func() {
+		if err := sender.Close(); err != nil {
+			logger.Error("Error closing sender", map[string]any{
+				"error": err.Error(),
+			})
+		}
+	}()
 
 	// Process stream from stdin
 	err = processInputStream(logger, sender, os.Stdin)

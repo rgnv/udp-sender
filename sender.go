@@ -44,7 +44,7 @@ func NewUDPSender() (*UDPSender, error) {
 	// Set IP_HDRINCL option to tell the kernel we're providing the IP header
 	err = syscall.SetsockoptInt(fd4, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 1)
 	if err != nil {
-		syscall.Close(fd4)
+		_ = syscall.Close(fd4)
 		return nil, fmt.Errorf("failed to set IP_HDRINCL: %w", err)
 	}
 
@@ -54,7 +54,7 @@ func NewUDPSender() (*UDPSender, error) {
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		// Clean up IPv4 socket
-		syscall.Close(sender.fdIPv4)
+		_ = syscall.Close(sender.fdIPv4)
 		return nil, fmt.Errorf("failed to create raw IPv6 socket (requires root): %w", err)
 	}
 	// Note: IPv6 raw sockets don't require IPV6_HDRINCL on most systems

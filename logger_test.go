@@ -298,7 +298,7 @@ func TestLogger_FieldOrder(t *testing.T) {
 	}
 
 	// Verify they appear in the correct order: time < level < message
-	if !(timePos < levelPos && levelPos < messagePos) {
+	if timePos >= levelPos || levelPos >= messagePos {
 		t.Errorf("Fields not in correct order. Positions: time=%d, level=%d, message=%d. JSON: %s",
 			timePos, levelPos, messagePos, jsonStr)
 	}

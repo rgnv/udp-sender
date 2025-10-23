@@ -20,7 +20,7 @@ func TestNewUDPSender(t *testing.T) {
 	if sender == nil {
 		t.Fatal("NewUDPSender() returned nil sender without error")
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	// Verify both socket file descriptors are valid
 	if sender.fdIPv4 < 0 {
@@ -44,7 +44,7 @@ func TestUDPSender_Send(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to listen on UDP: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Get the actual port assigned
 	serverAddr := conn.LocalAddr().(*net.UDPAddr)
@@ -55,7 +55,7 @@ func TestUDPSender_Send(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	tests := []struct {
 		name    string
@@ -93,7 +93,7 @@ func TestUDPSender_Send(t *testing.T) {
 
 			// Receive message
 			buf := make([]byte, 1024)
-			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 			receivedN, fromAddr, err := conn.ReadFromUDP(buf)
 			if err != nil {
 				t.Errorf("Failed to receive message: %v", err)
@@ -140,7 +140,7 @@ func TestPacketSender_Interface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
-	defer udpSender.Close()
+	defer func() { _ = udpSender.Close() }()
 
 	// Assign to interface
 	sender = udpSender
@@ -168,7 +168,7 @@ func TestRawSocketPermissions(t *testing.T) {
 		return
 	}
 
-	syscall.Close(fd)
+	_ = syscall.Close(fd)
 	t.Log("Successfully created raw socket - running with appropriate privileges")
 }
 
@@ -192,7 +192,7 @@ func BenchmarkUDPSender_Send(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to listen on UDP: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Get the actual port assigned
 	serverAddr := conn.LocalAddr().(*net.UDPAddr)
@@ -203,7 +203,7 @@ func BenchmarkUDPSender_Send(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	// Start goroutine to drain received packets
 	done := make(chan bool)
@@ -214,8 +214,8 @@ func BenchmarkUDPSender_Send(b *testing.B) {
 			case <-done:
 				return
 			default:
-				conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
-				conn.ReadFromUDP(buf)
+				_ = conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
+				_, _, _ = conn.ReadFromUDP(buf)
 			}
 		}
 	}()
@@ -251,7 +251,7 @@ func BenchmarkUDPSender_SendVariablePayloadSizes(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to listen on UDP: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	serverAddr := conn.LocalAddr().(*net.UDPAddr)
 	serverPort := fmt.Sprintf("%d", serverAddr.Port)
@@ -260,7 +260,7 @@ func BenchmarkUDPSender_SendVariablePayloadSizes(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	// Start goroutine to drain received packets
 	done := make(chan bool)
@@ -271,8 +271,8 @@ func BenchmarkUDPSender_SendVariablePayloadSizes(b *testing.B) {
 			case <-done:
 				return
 			default:
-				conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
-				conn.ReadFromUDP(buf)
+				_ = conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
+				_, _, _ = conn.ReadFromUDP(buf)
 			}
 		}
 	}()

@@ -111,7 +111,8 @@ func (l *Logger) log(level LogLevel, message string, fields map[string]any) {
 
 	jsonStr += "}\n"
 
-	l.output.Write([]byte(jsonStr))
+	// Explicitly ignore the error as we can't do much about it in a logger
+	_, _ = l.output.Write([]byte(jsonStr))
 }
 
 // Debug logs a debug-level message
