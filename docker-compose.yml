@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  udp-sender:
+    image: ghcr.io/criblio/udp-sender:latest
+    container_name: udp-sender
+    # Required capability for raw socket access
+    cap_add:
+      - NET_RAW
+    # Run as non-root user (defined in Dockerfile)
+    user: "1000:1000"
+    # Command line arguments: port host1 [host2...]
+    command: ["514", "example.com"]
+    # To pipe data in, mount a volume or use stdin
+    stdin_open: true
+    # Optional: Network mode for host network access
+    # network_mode: "host"
+    # Optional: Mount volume for packet files
+    # volumes:
+    #   - ./packets:/data:ro
+    # Optional: Environment variables (if needed by future features)
+    # environment:
+    #   - TZ=UTC
+    # Restart policy
+    restart: unless-stopped
+
+# Example usage:
+# 1. Generate packets and pipe to container:
+#    go run packet-generator.go | docker-compose run --rm udp-sender 514 192.168.1.100
+#
+# 2. Use with pre-generated packet file:
+#    cat packets.bin | docker-compose run --rm udp-sender 514 example.com
+#
+# 3. Send to multiple hosts:
+#    docker-compose run --rm udp-sender 514 host1.com host2.com host3.com < packets.bin
+

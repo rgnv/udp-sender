@@ -1,0 +1,577 @@
+# UDPSender Class Design
+
+## Overview
+
+The `UDPSender` is implemented as a Go class using idiomatic Go patterns: structs with methods, interfaces, and proper encapsulation. The key design feature is **per-packet source and destination address specification**, allowing complete dynamic control of IP and port for each transmitted packet.
+
+```mermaid
+graph TD
+    A[Client Code] -->|Creates| B[UDPSender Instance]
+    B -->|Implements| C[PacketSender Interface]
+    B -->|Manages| D[Raw Socket]
+    A -->|Calls Send with<br/>different sources| B
+    B -->|Builds Packet| E[IP Header]
+    B -->|Builds Packet| F[UDP Header]
+    B -->|Builds Packet| G[Payload]
+    E -->|Combines| H[Complete Packet]
+    F -->|Combines| H
+    G -->|Combines| H
+    H -->|Sends via| D
+    D -->|Transmits to| I[Network]
+    
+    style B fill:#e1f5ff
+    style C fill:#fff4e1
+    style D fill:#ffe1e1
+```
+
+## Class Structure
+
+### Interface Definition
+
+```go
+type PacketSender interface {
+    Send(message string, srcHost string, srcPort string, destHost string, destPort string) (int, error)
+    Close() error
+}
+```
+
+**Design Decision**: Both source and destination IP and port are specified per packet in the `Send()` method for maximum flexibility.
+
+```mermaid
+classDiagram
+    class PacketSender {
+        <<interface>>
+        +Send(message, srcHost, srcPort, destHost, destPort) (int, error)
+        +Close() error
+    }
+    
+    class UDPSender {
+        -int fdIPv4
+        -int fdIPv6
+        +Send(payload, srcIP, srcPort, destIP, destPort) (int, error)
+        +Close() error
+        -buildPacket(payload, srcIP, srcPort, destIP, destPort) []byte
+        -buildIPv4Header(dataLen, srcIP, destIP) []byte
+        -buildIPv6Header(dataLen, srcIP, destIP) []byte
+        -buildUDPHeader(payload, srcIP, srcPort, destIP, destPort, isIPv6) []byte
+        -calculateUDPChecksum(udpHeader, payload, srcIP, destIP, isIPv6) uint16
+    }
+    
+    PacketSender <|.. UDPSender : implements
+```
+
+### Class Implementation
+
+```go
+type UDPSender struct {
+    fdIPv4 int  // Private: raw socket file descriptor for IPv4
+    fdIPv6 int  // Private: raw socket file descriptor for IPv6
+}
+```
+
+**Key Difference**: Neither source nor destination IP and port are stored in the struct. They are all parameters to the `Send()` method, enabling complete dynamic control per packet.
+
+## Object-Oriented Principles
+
+### 1. Encapsulation
+
+**Private Fields**: All struct fields use lowercase names, making them package-private:
+
+```go
+fd       int     // Not accessible outside the class
+destIP   net.IP  // Not accessible outside the class
+```
+
+**Public Getters**: Destination properties are accessed through getter methods:
+
+```go
+func (s *UDPSender) DestinationIPs() []net.IP {
+    var ips []net.IP
+    ips = append(ips, s.destIPv4s...)
+    ips = append(ips, s.destIPv6s...)
+    return ips
+}
+func (s *UDPSender) DestinationPort() uint16 { return s.destPort }
+```
+
+**No Source Getters**: Source IP/port are NOT stored, so there are no getters for them. They are specified per call to `Send()`.
+
+### 2. Constructor Pattern
+
+Factory function to create and initialize instances:
+
+```go
+func NewUDPSender(destHost, destPort string) (*UDPSender, error)
+```
+
+Benefits:
+
+- Validation before object creation
+- Complex initialization logic
+- Returns errors instead of invalid objects
+- Resource acquisition (raw socket)
+- Destination-only construction (source specified per packet)
+
+### 3. Interface Implementation
+
+The class implements the `PacketSender` interface, enabling:
+
+- **Polymorphism**: Multiple implementations can satisfy the interface
+- **Dependency Injection**: Functions can accept `PacketSender` instead of concrete type
+- **Testing**: Easy to create mock implementations
+- **Future Extensions**: New sender types (TCP, mock, etc.)
+
+Compile-time verification:
+
+```go
+var _ PacketSender = (*UDPSender)(nil)
+```
+
+### 4. Method Types
+
+**Public Methods** (exported):
+
+- `Send(message, srcHost, srcPort string) (int, error)` - Send UDP packet with specified source
+- `Close() error` - Release resources
+- `DestinationIPs() []net.IP` - Getter for all destination IPs
+- `DestinationPort() uint16` - Getter for destination port
+- `String() string` - String representation
+
+**Private Methods** (package-private):
+
+- `buildPacket(payload []byte, srcIP net.IP, srcPort uint16) []byte`
+- `buildIPHeader(dataLen int, srcIP net.IP) []byte`
+- `buildUDPHeader(payload []byte, srcIP net.IP, srcPort uint16) []byte`
+- `calculateUDPChecksum(udpHeader, payload []byte, srcIP net.IP) uint16`
+
+**Key Design**: All packet-building methods accept source IP/port as parameters rather than reading from struct fields.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant UDPSender
+    participant buildPacket
+    participant buildIPv4Header
+    participant buildUDPHeader
+    participant RawSocket
+    participant Network
+    
+    Client->>UDPSender: Send(payload, "10.0.0.1", "5000")
+    Note over UDPSender: Select destination IP<br/>(round-robin)
+    UDPSender->>buildPacket: buildPacket(payload, srcIP, srcPort, destIP)
+    buildPacket->>buildIPv4Header: buildIPv4Header(len, srcIP, destIP)
+    buildIPv4Header-->>buildPacket: IP header bytes
+    buildPacket->>buildUDPHeader: buildUDPHeader(payload, srcIP, srcPort, destIP)
+    Note over buildUDPHeader: Calculate checksum
+    buildUDPHeader-->>buildPacket: UDP header bytes
+    buildPacket-->>UDPSender: Complete packet
+    UDPSender->>RawSocket: syscall.Sendto(packet, destIP)
+    RawSocket->>Network: Transmit packet
+    Network-->>Client: Bytes sent / error
+```
+
+### 5. SOLID Principles
+
+#### Single Responsibility
+
+- UDPSender: Manages UDP packet sending with raw sockets
+- Separate methods for each concern (IP header, UDP header, checksums)
+
+#### Open/Closed
+
+- Open for extension: Interface allows new implementations
+- Closed for modification: Core functionality is stable
+
+#### Liskov Substitution
+
+- Any `PacketSender` implementation can be used interchangeably
+- UDPSender maintains the interface contract
+
+#### Interface Segregation
+
+- Minimal interface with only essential methods
+- Clients depend only on what they need
+
+#### Dependency Inversion
+
+- Code depends on `PacketSender` interface, not concrete class
+- High-level code doesn't depend on low-level implementation
+
+```mermaid
+graph TB
+    subgraph "Single Responsibility"
+        A[UDPSender] -->|Manages| B[Raw Socket]
+        A -->|Delegates| C[buildIPHeader]
+        A -->|Delegates| D[buildUDPHeader]
+        A -->|Delegates| E[calculateChecksum]
+    end
+    
+    subgraph "Open/Closed & Liskov Substitution"
+        F[PacketSender Interface] -.->|implements| G[UDPSender]
+        F -.->|implements| H[MockSender]
+        F -.->|implements| I[TCPSender]
+        J[Client Code] -->|depends on| F
+    end
+    
+    subgraph "Interface Segregation"
+        K[Minimal Interface] -->|Send| L[Core Method]
+        K -->|Close| M[Cleanup Method]
+        K -->|Getters| N[Read-only Access]
+    end
+    
+    style F fill:#fff4e1
+    style G fill:#e1f5ff
+    style A fill:#e1f5ff
+```
+
+## Usage Patterns
+
+### Direct Instantiation
+
+```go
+// Create sender (no destination needed)
+sender, err := NewUDPSender()
+if err != nil {
+    log.Fatal(err)
+}
+defer sender.Close()
+
+// Specify source and destination per packet
+n, err := sender.Send("Hello, World!", "10.0.0.1", "12345", "192.168.1.100", "514")
+```
+
+### Dynamic Spoofing
+
+```go
+sender, _ := NewUDPSender()
+defer sender.Close()
+
+// Send from different sources to different destinations
+sender.Send("Packet 1", "10.0.0.1", "5001", "192.168.1.100", "514")
+sender.Send("Packet 2", "10.0.0.2", "5002", "192.168.1.101", "514")
+sender.Send("Packet 3", "192.168.1.5", "6000", "10.0.0.1", "8080")
+```
+
+### Interface-Based
+
+```go
+func sendPacket(ps PacketSender, message, srcHost, srcPort, destHost, destPort string) error {
+    _, err := ps.Send(message, srcHost, srcPort, destHost, destPort)
+    return err
+}
+
+sender, _ := NewUDPSender()
+sendPacket(sender, "Using interface", "10.0.0.1", "12345", "192.168.1.100", "514")
+```
+
+### Polymorphic Collections
+
+```go
+var senders []PacketSender
+senders = append(senders, udpSender1)
+senders = append(senders, udpSender2)
+
+// Each packet can have different source
+for i, sender := range senders {
+    srcIP := fmt.Sprintf("10.0.0.%d", i+1)
+    srcPort := fmt.Sprintf("%d", 5000+i)
+    sender.Send("Broadcast message", srcIP, srcPort)
+}
+```
+
+## Comparison: Old vs New Design
+
+```mermaid
+graph LR
+    subgraph "Old Design - Fixed Source"
+        A1[Constructor] -->|Sets once| B1[srcIP: 10.0.0.1<br/>srcPort: 12345]
+        B1 --> C1[Send Packet 1<br/>from 10.0.0.1:12345]
+        B1 --> D1[Send Packet 2<br/>from 10.0.0.1:12345]
+        B1 --> E1[Send Packet 3<br/>from 10.0.0.1:12345]
+        style B1 fill:#ffe1e1
+    end
+    
+    subgraph "New Design - Dynamic Source"
+        A2[Constructor] -->|No source stored| B2[Only destIP & destPort]
+        B2 --> C2[Send Packet 1<br/>from 10.0.0.1:5001]
+        B2 --> D2[Send Packet 2<br/>from 10.0.0.2:5002]
+        B2 --> E2[Send Packet 3<br/>from 192.168.1.5:9999]
+        style B2 fill:#e1ffe1
+    end
+```
+
+### Old Design (Fixed Source)
+
+```go
+type UDPSender struct {
+    fd       int
+    destIP   net.IP
+    destPort uint16
+    srcIP    net.IP    // Fixed at construction
+    srcPort  uint16    // Fixed at construction
+}
+
+// Source was fixed - couldn't change per packet
+sender, _ := NewUDPSender("dest", "8080", "src", "12345")
+sender.Send("Message 1")  // Always from src:12345
+sender.Send("Message 2")  // Always from src:12345
+```
+
+### New Design (Dynamic Source)
+
+```go
+type UDPSender struct {
+    fd       int
+    destIP   net.IP
+    destPort uint16
+    // No source fields - specified per packet!
+}
+
+// Source can change for each packet
+sender, _ := NewUDPSender("dest", "8080")
+sender.Send("Message 1", "10.0.0.1", "5001")  // From 10.0.0.1:5001
+sender.Send("Message 2", "10.0.0.2", "5002")  // From 10.0.0.2:5002
+sender.Send("Message 3", "192.168.1.5", "9999")  // From 192.168.1.5:9999
+```
+
+**Benefits of New Design**:
+
+- ✅ More flexible - change source per packet
+- ✅ Simpler struct - fewer fields
+- ✅ Better for simulating distributed sources
+- ✅ Reduces state management
+- ✅ Easier to understand - source is explicit in each call
+
+### Multiple Destination Support
+
+```mermaid
+graph TD
+    A[Client: Send Packet 1] -->|DNS Lookup| B[Host Resolution]
+    B --> C{Multiple IPs?}
+    C -->|Yes| D[Round-Robin Selection]
+    C -->|No| E[Single IP]
+    D --> F[destIPv4s: 203.0.113.1, 203.0.113.2, 203.0.113.3]
+    D --> G[destIPv6s: 2001:db8::1, 2001:db8::2]
+    F -->|nextIPv4Idx: 0| H[Packet 1 → 203.0.113.1]
+    F -->|nextIPv4Idx: 1| I[Packet 2 → 203.0.113.2]
+    F -->|nextIPv4Idx: 2| J[Packet 3 → 203.0.113.3]
+    F -->|nextIPv4Idx: 0| K[Packet 4 → 203.0.113.1<br/>cycles back]
+    
+    style D fill:#e1f5ff
+    style F fill:#fff4e1
+    style G fill:#fff4e1
+```
+
+### Packet Structure
+
+```mermaid
+graph LR
+    subgraph "Complete Packet"
+        A[IP Header<br/>20 bytes IPv4<br/>40 bytes IPv6] --> B[UDP Header<br/>8 bytes]
+        B --> C[Payload<br/>Variable length]
+    end
+    
+    subgraph "IP Header Fields"
+        D[Version/IHL<br/>TOS<br/>Total Length<br/>ID, Flags, Offset<br/>TTL, Protocol<br/>Checksum<br/>Source IP<br/>Dest IP]
+    end
+    
+    subgraph "UDP Header Fields"
+        E[Source Port<br/>Dest Port<br/>Length<br/>Checksum]
+    end
+    
+    A -.->|Structure| D
+    B -.->|Structure| E
+    
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#e1ffe1
+```
+
+## Testing Benefits
+
+### Mockable Interface
+
+```go
+type MockSender struct {
+    sentMessages []string
+}
+
+func (m *MockSender) Send(msg string, srcHost, srcPort string) (int, error) {
+    m.sentMessages = append(m.sentMessages, msg)
+    return len(msg), nil
+}
+
+func (m *MockSender) DestinationIPs() []net.IP { return []net.IP{net.ParseIP("127.0.0.1")} }
+// ... other interface methods
+```
+
+### Test Through Interface
+
+```go
+func TestSendLogic(t *testing.T) {
+    var sender PacketSender = &MockSender{}
+    // Test without needing root privileges
+    result := sendPacket(sender, "test")
+    // ...
+}
+```
+
+## Design Decisions
+
+### Why Private Fields?
+
+1. **Data Integrity**: Prevent external modification of internal state
+2. **Future-Proof**: Can change internal representation without breaking API
+3. **Validation**: Control how data is set and accessed
+4. **Immutability**: Read-only access through getters
+
+### Why Interface?
+
+1. **Flexibility**: Easy to add new implementations
+2. **Testing**: Mock implementations for unit tests
+3. **Decoupling**: Code depends on abstraction, not concrete type
+4. **Documentation**: Interface serves as contract
+
+### Why Constructor Function?
+
+1. **Validation**: Check inputs before creating object
+2. **Resource Management**: Acquire system resources (raw socket)
+3. **Error Handling**: Return errors for invalid configurations
+4. **Initialization**: Complex setup logic in one place
+
+## Encapsulation Architecture
+
+```mermaid
+graph TB
+    subgraph "Public API - External Interface"
+        A[PacketSender Interface]
+        B[NewUDPSender Constructor]
+        C[Public Methods:<br/>Send, Close, Getters]
+    end
+    
+    subgraph "Implementation - Package Private"
+        D[UDPSender Struct]
+        E[Private Fields:<br/>fd, destIP, destPort]
+        F[Private Methods:<br/>buildPacket, buildHeaders]
+    end
+    
+    subgraph "System Resources"
+        G[Raw Socket FD]
+        H[Network Stack]
+        I[Operating System]
+    end
+    
+    A -.->|implements| D
+    B -->|creates| D
+    C -->|access via| D
+    D -->|uses| E
+    D -->|calls| F
+    F -->|writes to| G
+    G -->|syscalls| H
+    H -->|kernel| I
+    
+    style A fill:#fff4e1
+    style D fill:#e1f5ff
+    style G fill:#ffe1e1
+```
+
+## Future Extensions
+
+The class design allows for easy extensions:
+
+### Alternative Implementations
+
+```go
+type TCPSender struct { ... }      // TCP-based sender
+type QUICSender struct { ... }     // QUIC-based sender
+type MockSender struct { ... }     // Testing mock
+```
+
+All can implement `PacketSender` interface.
+
+### Additional Methods
+
+```go
+func (s *UDPSender) SetTTL(ttl uint8) error
+func (s *UDPSender) SetTOS(tos uint8) error
+func (s *UDPSender) GetStatistics() SendStats
+```
+
+Can be added without breaking existing code.
+
+### Composition
+
+```go
+type RateLimitedSender struct {
+    sender PacketSender
+    limiter *rate.Limiter
+}
+
+func (r *RateLimitedSender) Send(msg string) (int, error) {
+    r.limiter.Wait()
+    return r.sender.Send(msg)
+}
+```
+
+Wrap existing implementation with new behavior.
+
+### Extension Architecture
+
+```mermaid
+graph TB
+    subgraph "Interface Layer"
+        A[PacketSender Interface]
+    end
+    
+    subgraph "Core Implementations"
+        B[UDPSender]
+        C[TCPSender]
+        D[QUICSender]
+        E[MockSender]
+    end
+    
+    subgraph "Decorators/Wrappers"
+        F[RateLimitedSender<br/>wraps PacketSender]
+        G[LoggingSender<br/>wraps PacketSender]
+        H[MetricsSender<br/>wraps PacketSender]
+    end
+    
+    subgraph "Application Layer"
+        I[Stream Processor]
+        J[Packet Generator]
+        K[Test Suite]
+    end
+    
+    A -.->|implements| B
+    A -.->|implements| C
+    A -.->|implements| D
+    A -.->|implements| E
+    A -.->|wraps| F
+    A -.->|wraps| G
+    A -.->|wraps| H
+    
+    I -->|uses| A
+    J -->|uses| A
+    K -->|uses| A
+    
+    F -->|delegates to| A
+    G -->|delegates to| A
+    H -->|delegates to| A
+    
+    style A fill:#fff4e1
+    style B fill:#e1f5ff
+    style E fill:#ffe1e1
+```
+
+## Conclusion
+
+The `UDPSender` class demonstrates proper object-oriented design in Go:
+
+- ✅ Encapsulation with private fields
+- ✅ Interface-based abstraction
+- ✅ Constructor pattern for initialization
+- ✅ Getter methods for controlled access
+- ✅ SOLID principles adherence
+- ✅ Testable and extensible design
+
+This design provides a clean, maintainable, and professional API for UDP packet sending with IP spoofing capabilities.

@@ -1,0 +1,416 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+
+    - name: Run tests
+      run: go test -v ./...
+
+    - name: Get version from tag
+      id: version
+      run: |
+        VERSION="${GITHUB_REF#refs/tags/}"
+        PKG_VERSION="${VERSION#v}"
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_OUTPUT
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get the previous tag
+        PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${{ steps.version.outputs.VERSION }}$" | head -n 1)
+        
+        if [ -z "$PREVIOUS_TAG" ]; then
+          echo "No previous tag found, using all commits"
+          PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+        fi
+        
+        echo "Generating changelog from $PREVIOUS_TAG to ${{ steps.version.outputs.VERSION }}"
+        
+        # Generate changelog
+        {
+          echo "CHANGELOG<<EOF"
+          echo ""
+          echo "### What's Changed"
+          echo ""
+          
+          # Get commits and categorize them
+          git log --no-merges --pretty=format:"%s" "$PREVIOUS_TAG..HEAD" | while read -r line; do
+            # Extract conventional commit type if present
+            if echo "$line" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?:"; then
+              TYPE=$(echo "$line" | sed -E 's/^([a-z]+)(\(.+\))?: .*/\1/')
+              MSG=$(echo "$line" | sed -E 's/^[a-z]+(\(.+\))?: (.*)/\2/')
+              
+              case "$TYPE" in
+                feat)
+                  echo "- ✨ $MSG"
+                  ;;
+                fix)
+                  echo "- 🐛 $MSG"
+                  ;;
+                docs)
+                  echo "- 📚 $MSG"
+                  ;;
+                perf)
+                  echo "- ⚡ $MSG"
+                  ;;
+                refactor)
+                  echo "- ♻️ $MSG"
+                  ;;
+                test)
+                  echo "- ✅ $MSG"
+                  ;;
+                build|ci)
+                  echo "- 🔧 $MSG"
+                  ;;
+                *)
+                  echo "- $MSG"
+                  ;;
+              esac
+            else
+              echo "- $line"
+            fi
+          done
+          
+          echo ""
+          echo "**Full Changelog**: https://github.com/criblio/udp-sender/compare/$PREVIOUS_TAG...${{ steps.version.outputs.VERSION }}"
+          echo ""
+          echo "EOF"
+        } >> $GITHUB_OUTPUT
+
+    - name: Build binaries
+      run: |
+        # Create output directory
+        mkdir -p dist
+        
+        # Build for Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -o dist/udp-sender-linux-amd64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
+        
+        # Build for Linux ARM64
+        GOOS=linux GOARCH=arm64 go build -o dist/udp-sender-linux-arm64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
+        
+        # Build for macOS AMD64
+        GOOS=darwin GOARCH=amd64 go build -o dist/udp-sender-darwin-amd64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
+        
+        # Build for macOS ARM64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -o dist/udp-sender-darwin-arm64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
+
+    - name: Create compressed archives and checksums
+      run: |
+        cd dist
+        
+        # Linux AMD64
+        tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz udp-sender-linux-amd64
+        sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz.sha256
+        
+        # Linux ARM64
+        tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz udp-sender-linux-arm64
+        sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz.sha256
+        
+        # macOS AMD64
+        tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz udp-sender-darwin-amd64
+        sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz.sha256
+        
+        # macOS ARM64
+        tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz udp-sender-darwin-arm64
+        sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz.sha256
+        
+        # Display checksums
+        cat *.sha256
+        
+        ls -lh
+
+    - name: Install packaging tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm
+        sudo gem install --no-document fpm
+
+    - name: Create DEB and RPM packages
+      run: |
+        cd dist
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        # Remove 'v' prefix from version for packages
+        PKG_VERSION="${VERSION#v}"
+        
+        # Create DEB package for AMD64
+        fpm -s dir -t deb \
+          -n udp-sender \
+          -v "$PKG_VERSION" \
+          -a amd64 \
+          --description "UDP packet sender with IP/port spoofing support" \
+          --url "https://github.com/criblio/udp-sender" \
+          --maintainer "Cribl <support@cribl.io>" \
+          --license "MIT" \
+          --vendor "Cribl, Inc." \
+          --after-install ../scripts/postinstall.sh \
+          --before-remove ../scripts/preremove.sh \
+          udp-sender-linux-amd64=/usr/bin/udp-sender
+        
+        # Create DEB package for ARM64
+        fpm -s dir -t deb \
+          -n udp-sender \
+          -v "$PKG_VERSION" \
+          -a arm64 \
+          --description "UDP packet sender with IP/port spoofing support" \
+          --url "https://github.com/criblio/udp-sender" \
+          --maintainer "Cribl <support@cribl.io>" \
+          --license "MIT" \
+          --vendor "Cribl, Inc." \
+          --after-install ../scripts/postinstall.sh \
+          --before-remove ../scripts/preremove.sh \
+          udp-sender-linux-arm64=/usr/bin/udp-sender
+        
+        # Create RPM package for AMD64 (x86_64)
+        fpm -s dir -t rpm \
+          -n udp-sender \
+          -v "$PKG_VERSION" \
+          -a x86_64 \
+          --description "UDP packet sender with IP/port spoofing support" \
+          --url "https://github.com/criblio/udp-sender" \
+          --maintainer "Cribl <support@cribl.io>" \
+          --license "MIT" \
+          --vendor "Cribl, Inc." \
+          --after-install ../scripts/postinstall.sh \
+          --before-remove ../scripts/preremove.sh \
+          udp-sender-linux-amd64=/usr/bin/udp-sender
+        
+        # Create RPM package for ARM64 (aarch64)
+        fpm -s dir -t rpm \
+          -n udp-sender \
+          -v "$PKG_VERSION" \
+          -a aarch64 \
+          --description "UDP packet sender with IP/port spoofing support" \
+          --url "https://github.com/criblio/udp-sender" \
+          --maintainer "Cribl <support@cribl.io>" \
+          --license "MIT" \
+          --vendor "Cribl, Inc." \
+          --after-install ../scripts/postinstall.sh \
+          --before-remove ../scripts/preremove.sh \
+          udp-sender-linux-arm64=/usr/bin/udp-sender
+        
+        # Generate checksums for packages
+        sha256sum *.deb *.rpm >> checksums.txt
+        for pkg in *.deb *.rpm; do
+          sha256sum "$pkg" > "$pkg.sha256"
+        done
+        
+        # List all packages
+        ls -lh *.deb *.rpm
+        echo ""
+        echo "Package checksums:"
+        cat *.deb.sha256 *.rpm.sha256
+
+    - name: Create Release Notes
+      id: release_notes
+      run: |
+        # Write release notes header
+        cat > release_notes.md << EOF
+        ## UDP Sender ${{ steps.version.outputs.VERSION }}
+        
+        ${{ steps.changelog.outputs.CHANGELOG }}
+        
+        ### Downloads
+        
+        #### Linux Packages (Recommended)
+        
+        | Distribution | Architecture | Package |
+        |--------------|--------------|---------|
+        | Debian/Ubuntu | AMD64 | \`udp-sender_${{ steps.version.outputs.PKG_VERSION }}_amd64.deb\` |
+        | Debian/Ubuntu | ARM64 | \`udp-sender_${{ steps.version.outputs.PKG_VERSION }}_arm64.deb\` |
+        | RHEL/CentOS/Fedora | x86_64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm\` |
+        | RHEL/CentOS/Fedora | aarch64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.aarch64.rpm\` |
+        
+        #### Standalone Binaries
+        
+        | Platform | Architecture | Download |
+        |----------|--------------|----------|
+        | Linux | AMD64 | \`udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz\` |
+        | Linux | ARM64 | \`udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz\` |
+        | macOS | Intel | \`udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz\` |
+        | macOS | Apple Silicon | \`udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz\` |
+        
+        ### Installation
+        
+        #### Using Package Manager (Linux)
+        
+        **Debian/Ubuntu:**
+        
+        \`\`\`bash
+        # Download the package
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender_${{ steps.version.outputs.PKG_VERSION }}_amd64.deb
+        
+        # Install (creates udp-senders group automatically)
+        sudo dpkg -i udp-sender_${{ steps.version.outputs.PKG_VERSION }}_amd64.deb
+        
+        # Add your user to the udp-senders group
+        sudo usermod -aG udp-senders \$USER
+        
+        # Log out and back in (or run: newgrp udp-senders)
+        # Then you can run without sudo:
+        udp-sender --help
+        \`\`\`
+        
+        **RHEL/CentOS/Fedora:**
+        
+        \`\`\`bash
+        # Download the package
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm
+        
+        # Install (creates udp-senders group automatically)
+        sudo rpm -i udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm
+        # or
+        sudo yum install udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm
+        
+        # Add your user to the udp-senders group
+        sudo usermod -aG udp-senders \$USER
+        
+        # Log out and back in (or run: newgrp udp-senders)
+        # Then you can run without sudo:
+        udp-sender --help
+        \`\`\`
+        
+        #### Manual Installation (All Platforms)
+        
+        \`\`\`bash
+        # Download and extract (example for Linux AMD64)
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
+        tar -xzf udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
+        
+        # Make executable and optionally move to PATH
+        chmod +x udp-sender-linux-amd64
+        sudo mv udp-sender-linux-amd64 /usr/local/bin/udp-sender
+        
+        # For Linux: grant CAP_NET_RAW capability instead of using sudo
+        sudo setcap cap_net_raw+ep /usr/local/bin/udp-sender
+        \`\`\`
+        
+        ### Verify Download
+        
+        \`\`\`bash
+        # Download checksum file for your platform (example for Linux AMD64)
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz.sha256
+        
+        # Verify checksum (Linux/macOS)
+        sha256sum -c udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz.sha256
+        \`\`\`
+        
+        ### Requirements
+        
+        - **Linux**: CAP_NET_RAW capability or root privileges
+        - **macOS**: Root privileges (sudo)
+        - **Windows**: Not supported (use WSL2 or Docker)
+        
+        See the [README](https://github.com/criblio/udp-sender/blob/master/README.md) for full documentation.
+        EOF
+        
+        echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
+        cat release_notes.md >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body_path: release_notes.md
+        files: |
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz.sha256
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz.sha256
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz.sha256
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz.sha256
+          dist/*.deb
+          dist/*.deb.sha256
+          dist/*.rpm
+          dist/*.rpm.sha256
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # Docker image build and push to GitHub Container Registry
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract Docker metadata
+      id: docker_meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.docker_meta.outputs.tags }}
+        labels: ${{ steps.docker_meta.outputs.labels }}
+        build-args: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Summary
+      run: |
+        echo "## Release ${{ steps.version.outputs.VERSION }} Published! 🚀" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Built Artifacts:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Standalone Binaries:**" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Linux AMD64" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Linux ARM64" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ macOS AMD64 (Intel)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ macOS ARM64 (Apple Silicon)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Linux Packages:**" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ DEB (amd64, arm64)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ RPM (x86_64, aarch64)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Container Images:**" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ \`ghcr.io/${{ github.repository }}:${{ steps.version.outputs.PKG_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ \`ghcr.io/${{ github.repository }}:latest\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Architectures: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Release URL:" >> $GITHUB_STEP_SUMMARY
+        echo "https://github.com/criblio/udp-sender/releases/tag/${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Container Registry:" >> $GITHUB_STEP_SUMMARY
+        echo "https://github.com/${{ github.repository }}/pkgs/container/udp-sender" >> $GITHUB_STEP_SUMMARY
+

@@ -1,0 +1,44 @@
+# Git files
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+AUTHORS
+LICENSE
+
+# Build artifacts
+udp-sender
+*.tar.gz
+*.deb
+*.rpm
+*.sha256
+coverage.out
+coverage.html
+
+# Test files
+*_test.go
+
+# Scripts
+scripts/
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# CI/CD
+.golangci.yml
+.goreleaser.yml
+Makefile
+
+# Demo files
+packet-generator.go
+
+# Docker
+.dockerignore
+Dockerfile
+
