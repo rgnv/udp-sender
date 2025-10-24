@@ -48,6 +48,8 @@ classDiagram
     class UDPSender {
         -int fdIPv4
         -int fdIPv6
+        -int maxPayloadIPv4
+        -int maxPayloadIPv6
         +Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error)
         +Close() error
         -buildPacket(payload []byte, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) []byte
@@ -64,12 +66,14 @@ classDiagram
 
 ```go
 type UDPSender struct {
-    fdIPv4 int  // Private: raw socket file descriptor for IPv4
-    fdIPv6 int  // Private: raw socket file descriptor for IPv6
+    fdIPv4         int  // Private: raw socket file descriptor for IPv4
+    fdIPv6         int  // Private: raw socket file descriptor for IPv6
+    maxPayloadIPv4 int  // Private: maximum payload size for IPv4 based on MTU
+    maxPayloadIPv6 int  // Private: maximum payload size for IPv6 based on MTU
 }
 ```
 
-**Key Design Philosophy**: The struct stores only what's absolutely necessary (socket file descriptors). Neither source nor destination IP and port are stored. All addressing information is passed as parameters to the `Send()` method, enabling complete dynamic control of both source and destination per packet.
+**Key Design Philosophy**: The struct stores only what's absolutely necessary (socket file descriptors and MTU-based payload limits). Neither source nor destination IP and port are stored. All addressing information is passed as parameters to the `Send()` method, enabling complete dynamic control of both source and destination per packet.
 
 ## Object-Oriented Principles
 
@@ -78,8 +82,10 @@ type UDPSender struct {
 **Private Fields**: All struct fields use lowercase names, making them package-private:
 
 ```go
-fdIPv4  int     // Not accessible outside the package - IPv4 raw socket
-fdIPv6  int     // Not accessible outside the package - IPv6 raw socket
+fdIPv4         int  // Not accessible outside the package - IPv4 raw socket
+fdIPv6         int  // Not accessible outside the package - IPv6 raw socket
+maxPayloadIPv4 int  // Not accessible outside the package - MTU-based IPv4 payload limit
+maxPayloadIPv6 int  // Not accessible outside the package - MTU-based IPv6 payload limit
 ```
 
 **No Getters**: Neither source nor destination IP/port are stored in the struct, so there are no getter methods. Both source and destination are specified per call to `Send()` for complete per-packet control.
@@ -89,8 +95,12 @@ fdIPv6  int     // Not accessible outside the package - IPv6 raw socket
 Factory function to create and initialize instances:
 
 ```go
-func NewUDPSender() (*UDPSender, error)
+func NewUDPSender(maxPayloadIPv4, maxPayloadIPv6 int) (*UDPSender, error)
 ```
+
+**Parameters**:
+- `maxPayloadIPv4`: Maximum payload size for IPv4 packets (based on MTU - 20 - 8)
+- `maxPayloadIPv6`: Maximum payload size for IPv6 packets (based on MTU - 40 - 8)
 
 Benefits:
 
@@ -98,6 +108,7 @@ Benefits:
 - Complex initialization logic
 - Returns errors instead of invalid objects
 - Resource acquisition (creates both IPv4 and IPv6 raw sockets)
+- MTU configuration for payload validation
 - No destination needed (both source and destination specified per packet)
 
 ### 3. Interface Implementation
@@ -214,8 +225,12 @@ graph TB
 ### Direct Instantiation
 
 ```go
-// Create sender (no parameters needed - creates both IPv4 and IPv6 sockets)
-sender, err := NewUDPSender()
+// Calculate max payload sizes based on MTU (e.g., 1500 bytes)
+maxPayloadIPv4 := 1500 - 20 - 8  // 1472 bytes
+maxPayloadIPv6 := 1500 - 40 - 8  // 1452 bytes
+
+// Create sender with MTU-based payload limits (creates both IPv4 and IPv6 sockets)
+sender, err := NewUDPSender(maxPayloadIPv4, maxPayloadIPv6)
 if err != nil {
     log.Fatal(err)
 }
@@ -230,7 +245,7 @@ n, err := sender.Send("Hello, World!", srcIP, 12345, destIP, 514)
 ### Dynamic Spoofing
 
 ```go
-sender, _ := NewUDPSender()
+sender, _ := NewUDPSender(1472, 1452)  // Standard MTU limits
 defer sender.Close()
 
 // Send from different sources to different destinations
@@ -250,7 +265,7 @@ func sendPacket(ps PacketSender, message string, srcIP net.IP, srcPort uint16, d
     return err
 }
 
-sender, _ := NewUDPSender()
+sender, _ := NewUDPSender(1472, 1452)  // Standard MTU limits
 srcIP := net.ParseIP("10.0.0.1")
 destIP := net.ParseIP("192.168.1.100")
 sendPacket(sender, "Using interface", srcIP, 12345, destIP, 514)
@@ -314,13 +329,15 @@ sender.Send("Message 2")  // Always from src:12345 to dest:8080
 
 ```go
 type UDPSender struct {
-    fdIPv4   int  // IPv4 raw socket
-    fdIPv6   int  // IPv6 raw socket
+    fdIPv4         int  // IPv4 raw socket
+    fdIPv6         int  // IPv6 raw socket
+    maxPayloadIPv4 int  // MTU-based payload limit for IPv4
+    maxPayloadIPv6 int  // MTU-based payload limit for IPv6
     // No source or destination fields - both specified per packet!
 }
 
 // Both source and destination can change for each packet
-sender, _ := NewUDPSender()  // No parameters needed
+sender, _ := NewUDPSender(1472, 1452)  // MTU-based payload limits
 sender.Send("Message 1", net.ParseIP("10.0.0.1"), 5001, net.ParseIP("192.168.1.100"), 514)
 sender.Send("Message 2", net.ParseIP("10.0.0.2"), 5002, net.ParseIP("192.168.1.101"), 8080)
 sender.Send("Message 3", net.ParseIP("192.168.1.5"), 9999, net.ParseIP("10.0.0.1"), 443)

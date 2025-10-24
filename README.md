@@ -12,6 +12,8 @@ A Go application for sending UDP packets with raw socket support, allowing IP an
 - **IPv6 Support**: Full support for both IPv4 and IPv6 addresses
 - **Binary Protocol**: Efficient wire format for high-volume packet streams
 - **Raw Socket Implementation**: Manual IP and UDP header construction
+- **Configurable MTU**: Adjustable Maximum Transmission Unit via command line (default 1500, range 576-9000 bytes)
+- **MTU Validation**: Automatic validation and rejection of packets exceeding MTU limits based on configured value
 - **Flexible API**: Source and destination addresses can change with each packet
 - **Command Line Interface**: Simple command-line interface with no required arguments
 - **Structured Logging**: Newline-delimited JSON (ND-JSON) logs for easy parsing and analysis (see [LOGGING.md](LOGGING.md))
@@ -189,12 +191,20 @@ cat packets.bin | ./udp-sender
 Usage: udp-sender [OPTIONS]
 
 Options:
-  -h, --help       Show this help message
-  -V, --version    Print version and exit
-  -v, --verbose    Enable verbose logging (debug level)
+  -h, --help        Show this help message
+  -V, --version     Print version and exit
+  -v, --verbose     Enable verbose logging (debug level)
+  -m, --mtu <bytes> Maximum Transmission Unit (default: 1500)
 ```
 
 The application reads packets from stdin using the binary protocol format. Each packet specifies its own source and destination IP address and port.
+
+**MTU Configuration**:
+- Default: 1500 bytes (standard Ethernet)
+- Range: 576-9000 bytes
+- Affects maximum payload sizes for IPv4 and IPv6 packets
+- IPv4 max payload = MTU - 20 (IP header) - 8 (UDP header)
+- IPv6 max payload = MTU - 40 (IP header) - 8 (UDP header)
 
 ### Version Information
 
@@ -229,6 +239,14 @@ go run packet-generator.go -ipv6 -base-ip "2001:db8::1" -dest-ip "2001:db8::100"
 # Custom base IP and port (IPv4)
 go run packet-generator.go -base-ip 192.168.1.10 -base-port 1000 \
   -dest-ip 192.168.1.100 -dest-port 514 -count 50 | sudo ./udp-sender
+
+# Use jumbo frames (9000 byte MTU)
+go run packet-generator.go -count 100 -dest-ip 192.168.1.100 -dest-port 514 | \
+  sudo ./udp-sender -m 9000
+
+# Custom MTU for specific network
+go run packet-generator.go -count 100 -dest-ip 192.168.1.100 -dest-port 514 | \
+  sudo ./udp-sender -m 1400
 
 # Save packets to file for later
 go run packet-generator.go -count 1000 -dest-ip 192.168.1.100 -dest-port 514 > packets.bin
@@ -431,8 +449,12 @@ type UDPSender struct {
 #### Creating a Sender (Constructor)
 
 ```go
-// Create sender (no destination needed - specified per packet)
-sender, err := NewUDPSender()
+// Calculate max payload sizes based on MTU (e.g., 1500 bytes)
+maxPayloadIPv4 := 1500 - 20 - 8  // 1472 bytes
+maxPayloadIPv6 := 1500 - 40 - 8  // 1452 bytes
+
+// Create sender with MTU-based payload limits
+sender, err := NewUDPSender(maxPayloadIPv4, maxPayloadIPv6)
 if err != nil {
     log.Fatal(err)
 }
@@ -491,7 +513,7 @@ func sendPacket(ps PacketSender, message string, srcIP net.IP, srcPort uint16, d
 }
 
 // Usage
-sender, _ := NewUDPSender()
+sender, _ := NewUDPSender(1472, 1452)  // Standard MTU limits
 defer sender.Close()
 sendPacket(sender, "Hello, World!", net.ParseIP("10.0.0.1"), 12345, net.ParseIP("192.168.1.100"), 514)
 ```
@@ -568,6 +590,7 @@ getcap ./udp-sender
 2. **Network filtering**: ISPs and routers may drop spoofed packets
 3. **Routing**: Spoofed source IPs may not have valid routes
 4. **Checksum issues**: Verify packet construction is correct
+5. **MTU exceeded**: Packets larger than MTU limits are automatically dropped (see logs)
 
 **Debug with tcpdump**:
 
@@ -575,6 +598,53 @@ getcap ./udp-sender
 # On receiver
 sudo tcpdump -i any -n udp port 8080 -v
 ```
+
+### Packets being dropped (MTU errors)
+
+**Problem**: Logs show "Packet dropped due to MTU limit" errors
+
+**Cause**: Packet payloads exceed the Maximum Transmission Unit.
+
+With the default MTU of 1500 bytes:
+- IPv4: Maximum 1472 bytes (1500 - 20 - 8)
+- IPv6: Maximum 1452 bytes (1500 - 40 - 8)
+
+**Solutions**:
+
+1. **Increase MTU** if your network supports it:
+
+   ```bash
+   # Use jumbo frames for larger payloads
+   cat packets.bin | sudo ./udp-sender -m 9000
+   ```
+
+2. **Reduce payload size** in your packet generator:
+
+   ```bash
+   # Ensure payloads are within limits
+   go run packet-generator.go -count 100 -payload-size 1400
+   ```
+
+3. **Check final statistics** for dropped packet count:
+
+   ```json
+   {
+     "level": "info",
+     "message": "Stream complete",
+     "packets_sent": 98,
+     "packets_dropped": 2,
+     "bytes_sent": 142856
+   }
+   ```
+
+3. **Monitor error logs** for specific packets that were dropped:
+
+   ```bash
+   # Filter for MTU errors
+   ./udp-sender 2>&1 | grep "MTU limit"
+   ```
+
+**Note**: The application automatically validates and drops oversized packets to prevent fragmentation issues with IP spoofing.
 
 ### Tests skipped
 
@@ -617,11 +687,9 @@ For full testing, run locally with sudo.
 ├── .gitignore                   # Git ignore rules
 ├── .golangci.yml                # Linter configuration
 ├── AUTHORS                      # Project authors and contributors
-├── constants.go                 # Shared protocol constants (magic bytes)
+├── constants.go                 # Shared protocol constants (magic bytes, MTU limits)
 ├── DESIGN.md                    # Class design documentation
 ├── Dockerfile                   # Container image definition
-├── examples/
-│   └── logger-demo.go           # Example demonstrating structured logging
 ├── go.mod                       # Go module definition
 ├── helpers_test.go              # Common test helpers (requireRoot, requireNonRoot)
 ├── LICENSE                      # MIT License
@@ -654,10 +722,10 @@ The codebase is organized into focused modules:
 **Core Application**:
 
 - **main.go** - Command-line interface and application entry point
-- **sender.go** - Core UDPSender class with PacketSender interface
+- **sender.go** - Core UDPSender class with PacketSender interface and MTU validation
 - **packet.go** - Low-level packet construction (IPv4/IPv6 headers, UDP headers, checksums)
-- **protocol.go** - Stream protocol processing and validation
-- **constants.go** - Shared protocol constants (magic bytes)
+- **protocol.go** - Stream protocol processing, validation, and MTU error handling
+- **constants.go** - Shared protocol constants (magic bytes, MTU limits)
 - **logger.go** - Structured ND-JSON logging implementation
 
 **Testing**:
@@ -682,7 +750,7 @@ The codebase is organized into focused modules:
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `NewUDPSender()` | Constructor - creates new instance | `*UDPSender, error` |
+| `NewUDPSender(maxPayloadIPv4, maxPayloadIPv6 int)` | Constructor - creates new instance with MTU-based limits | `*UDPSender, error` |
 | `Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16)` | Sends a UDP packet with specified source and destination | `int, error` |
 | `Close()` | Closes the raw socket | `error` |
 

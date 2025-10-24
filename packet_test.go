@@ -411,7 +411,7 @@ func bytesEqual(a, b []byte) bool {
 func TestBuildIPHeader(t *testing.T) {
 	requireRoot(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestBuildIPHeader(t *testing.T) {
 func TestBuildIPv6Header(t *testing.T) {
 	requireRoot(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Skip("IPv6 not available")
 	}
@@ -494,7 +494,7 @@ func TestBuildIPv6Header(t *testing.T) {
 func TestBuildUDPHeader(t *testing.T) {
 	requireRoot(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
@@ -552,7 +552,7 @@ func BenchmarkBuildIPv4Header(b *testing.B) {
 		b.Skip("This benchmark requires root privileges (run with sudo)")
 	}
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		b.Fatalf("Failed to create sender: %v", err)
 	}
@@ -575,7 +575,7 @@ func BenchmarkBuildUDPHeader(b *testing.B) {
 		b.Skip("This benchmark requires root privileges (run with sudo)")
 	}
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		b.Fatalf("Failed to create sender: %v", err)
 	}

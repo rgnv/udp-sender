@@ -467,7 +467,65 @@ The stream processor will terminate with an error if:
 2. **Invalid IP version**: Version byte is not 4 or 6
 3. **EOF encountered mid-packet**: Incomplete packet data
 4. **Read errors**: I/O errors reading from stdin
-5. **Send errors**: Network errors sending packets
+5. **Send errors**: Network errors sending packets (except MTU errors, see below)
+
+### MTU Validation
+
+The sender validates payload sizes against Maximum Transmission Unit (MTU) limits to prevent packet fragmentation. The MTU is configurable via the `-m` or `--mtu` command line option (default: 1500 bytes, range: 576-9000 bytes).
+
+**Default limits** (with standard 1500-byte MTU):
+
+- **IPv4 packets**: Maximum payload size is **1472 bytes** (1500 MTU - 20 IP header - 8 UDP header)
+- **IPv6 packets**: Maximum payload size is **1452 bytes** (1500 MTU - 40 IPv6 header - 8 UDP header)
+
+**Custom MTU examples**:
+
+```bash
+# Use jumbo frames (9000 MTU) for larger payloads
+cat packets.bin | sudo ./udp-sender -m 9000
+# IPv4 max: 8972 bytes, IPv6 max: 8952 bytes
+
+# Use reduced MTU (1400) for specific networks
+cat packets.bin | sudo ./udp-sender -m 1400
+# IPv4 max: 1372 bytes, IPv6 max: 1352 bytes
+```
+
+**Behavior for oversized packets**:
+
+- Packet is rejected and **not sent**
+- Error is logged with detailed information (packet number, payload size, IPs, ports)
+- Processing **continues** with the next packet (non-fatal error)
+- Dropped packets are tracked separately in statistics
+
+**Example log output for dropped packet**:
+
+```json
+{
+  "time": "2025-10-24T10:30:45Z",
+  "level": "error",
+  "message": "Packet dropped due to MTU limit",
+  "packet_number": 42,
+  "payload_size": 2000,
+  "source_ip": "192.168.1.1",
+  "source_port": 12345,
+  "dest_ip": "192.168.1.2",
+  "dest_port": 54321,
+  "error": "payload size 2000 exceeds MTU limit for IPv4 (1472 bytes)"
+}
+```
+
+**Final statistics include dropped packets**:
+
+```json
+{
+  "time": "2025-10-24T10:30:50Z",
+  "level": "info",
+  "message": "Stream complete",
+  "packets_sent": 98,
+  "packets_dropped": 2,
+  "bytes_sent": 142856
+}
+```
 
 Error messages include:
 
@@ -507,11 +565,16 @@ This could indicate data corruption or using an incompatible protocol version.
 
 ## Best Practices
 
-1. **Validate input**: Ensure source IPs are valid IPv4 addresses
-2. **Payload size**: Keep payloads under MTU size (typically 1500 bytes) to avoid fragmentation
-3. **Error checking**: Monitor stderr for progress and error messages
+1. **Validate input**: Ensure source IPs are valid IPv4/IPv6 addresses
+2. **Payload size**: Keep payloads within MTU limits:
+   - **IPv4**: Maximum 1472 bytes (default 1500 MTU)
+   - **IPv6**: Maximum 1452 bytes (default 1500 MTU)
+   - Adjust with `-m` or `--mtu` flag if your network supports different MTU sizes
+   - Oversized packets will be automatically dropped with error logging
+3. **Error checking**: Monitor stderr for progress and error messages, including MTU violations
 4. **Testing**: Test with small packet counts first
 5. **Rate limiting**: Consider adding delays in packet generator for high-volume streams
+6. **Monitor dropped packets**: Check the `packets_dropped` field in final statistics to identify MTU issues
 
 ## Debugging
 
@@ -540,10 +603,15 @@ go run packet-generator.go -count 5 2>&1 | \
 ## Limitations
 
 1. **Version field required**: All packets must include the version byte
-2. **Max payload**: 65535 bytes per packet (uint16 limit)
+2. **Max payload**: Limited by MTU to prevent fragmentation:
+   - **IPv4**: 1472 bytes maximum (default 1500 MTU)
+   - **IPv6**: 1452 bytes maximum (default 1500 MTU)
+   - Configurable via `-m` or `--mtu` command line option (range: 576-9000 bytes)
+   - Protocol supports up to 65535 bytes (uint16 limit), but packets exceeding MTU are dropped
 3. **No checksums**: Protocol doesn't include checksums (relies on UDP layer)
 4. **Sequential only**: Packets must be sent in sequence (no random access)
 5. **Mixed streams**: IPv4 and IPv6 packets can be mixed in the same stream
+6. **Fragmentation not supported**: Packets exceeding MTU are dropped rather than fragmented
 
 ## Future Enhancements
 

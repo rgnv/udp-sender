@@ -27,6 +27,22 @@ func (m *mockSender) Send(message string, srcIP net.IP, srcPort uint16, destIP n
 	if m.sendErr != nil {
 		return 0, m.sendErr
 	}
+
+	// Validate MTU limits like the real sender
+	payload := []byte(message)
+	srcIPv4 := srcIP.To4()
+	isIPv6 := srcIPv4 == nil
+	maxPayload := MaxPayloadIPv4
+	ipVersion := "IPv4"
+	if isIPv6 {
+		maxPayload = MaxPayloadIPv6
+		ipVersion = "IPv6"
+	}
+
+	if len(payload) > maxPayload {
+		return 0, errors.New("payload size exceeds MTU limit for " + ipVersion)
+	}
+
 	m.packets = append(m.packets, mockPacket{
 		message:  message,
 		srcIP:    srcIP,
@@ -564,8 +580,8 @@ func TestProcessInputStream_ProgressUpdates(t *testing.T) {
 func TestProcessInputStream_LargePayload(t *testing.T) {
 	srcIP := net.ParseIP("192.168.1.1").To4()
 	destIP := net.ParseIP("192.168.1.2").To4()
-	// Create a large payload (close to max UDP size)
-	payload := make([]byte, 10000)
+	// Create a large payload at the MTU limit (1472 bytes for IPv4)
+	payload := make([]byte, MaxPayloadIPv4)
 	for i := range payload {
 		payload[i] = byte(i % 256)
 	}
@@ -589,5 +605,159 @@ func TestProcessInputStream_LargePayload(t *testing.T) {
 
 	if len(sender.packets[0].message) != len(payload) {
 		t.Errorf("Payload length = %d, want %d", len(sender.packets[0].message), len(payload))
+	}
+}
+
+// TestProcessInputStream_MTUExceeded tests that packets exceeding MTU are logged and skipped
+func TestProcessInputStream_MTUExceeded(t *testing.T) {
+	tests := []struct {
+		name            string
+		version         byte
+		srcIP           net.IP
+		destIP          net.IP
+		payloadSize     int
+		expectedDropped int
+		expectedSent    int
+	}{
+		{
+			name:            "IPv4 packet exceeds MTU",
+			version:         4,
+			srcIP:           net.ParseIP("192.168.1.1"),
+			destIP:          net.ParseIP("192.168.1.2"),
+			payloadSize:     2000, // Exceeds 1472 byte limit
+			expectedDropped: 1,
+			expectedSent:    0,
+		},
+		{
+			name:            "IPv6 packet exceeds MTU",
+			version:         6,
+			srcIP:           net.ParseIP("2001:db8::1"),
+			destIP:          net.ParseIP("2001:db8::2"),
+			payloadSize:     2000, // Exceeds 1452 byte limit
+			expectedDropped: 1,
+			expectedSent:    0,
+		},
+		{
+			name:            "IPv4 packet within MTU",
+			version:         4,
+			srcIP:           net.ParseIP("192.168.1.1"),
+			destIP:          net.ParseIP("192.168.1.2"),
+			payloadSize:     1000, // Within 1472 byte limit
+			expectedDropped: 0,
+			expectedSent:    1,
+		},
+		{
+			name:            "IPv6 packet within MTU",
+			version:         6,
+			srcIP:           net.ParseIP("2001:db8::1"),
+			destIP:          net.ParseIP("2001:db8::2"),
+			payloadSize:     1000, // Within 1452 byte limit
+			expectedDropped: 0,
+			expectedSent:    1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			logger := &Logger{output: &logBuf, minLevel: LogLevelDebug}
+
+			sender := &mockSender{}
+
+			// Build packet with specified payload size
+			payload := bytes.Repeat([]byte("X"), tt.payloadSize)
+			packet := buildPacketBytes(tt.version, tt.srcIP, tt.destIP, 12345, 54321, payload)
+
+			reader := bytes.NewReader(packet)
+
+			err := processInputStream(logger, sender, reader)
+			if err != nil {
+				t.Fatalf("processInputStream failed: %v", err)
+			}
+
+			// Check number of packets sent
+			if len(sender.packets) != tt.expectedSent {
+				t.Errorf("Expected %d packets sent, got %d", tt.expectedSent, len(sender.packets))
+			}
+
+			// Check log output for dropped packets
+			logOutput := logBuf.String()
+			if tt.expectedDropped > 0 {
+				if !strings.Contains(logOutput, "Packet dropped due to MTU limit") {
+					t.Errorf("Expected MTU drop log message, but didn't find it in: %s", logOutput)
+				}
+				if !strings.Contains(logOutput, "exceeds MTU limit") {
+					t.Errorf("Expected MTU limit error in log, but didn't find it in: %s", logOutput)
+				}
+				// Verify packets_dropped field is in the completion message
+				if !strings.Contains(logOutput, "packets_dropped") {
+					t.Errorf("Expected packets_dropped field in log output, but didn't find it in: %s", logOutput)
+				}
+			} else {
+				if strings.Contains(logOutput, "Packet dropped") {
+					t.Errorf("Unexpected packet drop in log: %s", logOutput)
+				}
+			}
+		})
+	}
+}
+
+// TestProcessInputStream_MixedMTU tests processing a stream with both valid and oversized packets
+func TestProcessInputStream_MixedMTU(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := &Logger{output: &logBuf, minLevel: LogLevelDebug}
+
+	sender := &mockSender{}
+
+	// Build a stream with 3 packets: valid, oversized, valid
+	buf := &bytes.Buffer{}
+
+	// Packet 1: Valid IPv4 packet (small payload)
+	payload1 := []byte("Small packet")
+	packet1 := buildPacketBytes(4, net.ParseIP("192.168.1.1"), net.ParseIP("192.168.1.2"), 12345, 54321, payload1)
+	buf.Write(packet1)
+
+	// Packet 2: Oversized IPv4 packet
+	payload2 := bytes.Repeat([]byte("X"), 2000)
+	packet2 := buildPacketBytes(4, net.ParseIP("192.168.1.3"), net.ParseIP("192.168.1.4"), 12346, 54322, payload2)
+	buf.Write(packet2)
+
+	// Packet 3: Valid IPv4 packet (small payload)
+	payload3 := []byte("Another small packet")
+	packet3 := buildPacketBytes(4, net.ParseIP("192.168.1.5"), net.ParseIP("192.168.1.6"), 12347, 54323, payload3)
+	buf.Write(packet3)
+
+	reader := bytes.NewReader(buf.Bytes())
+
+	err := processInputStream(logger, sender, reader)
+	if err != nil {
+		t.Fatalf("processInputStream failed: %v", err)
+	}
+
+	// Should have sent 2 packets (packet 1 and packet 3)
+	if len(sender.packets) != 2 {
+		t.Errorf("Expected 2 packets sent, got %d", len(sender.packets))
+	}
+
+	// Verify the correct packets were sent
+	if len(sender.packets) >= 1 && sender.packets[0].message != string(payload1) {
+		t.Errorf("First packet payload mismatch")
+	}
+	if len(sender.packets) >= 2 && sender.packets[1].message != string(payload3) {
+		t.Errorf("Second packet payload mismatch")
+	}
+
+	// Check log output
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "Packet dropped due to MTU limit") {
+		t.Errorf("Expected MTU drop log message, but didn't find it in: %s", logOutput)
+	}
+
+	// Verify final stats show 2 sent, 1 dropped
+	if !strings.Contains(logOutput, "packets_sent") {
+		t.Errorf("Expected packets_sent in log output")
+	}
+	if !strings.Contains(logOutput, "packets_dropped") {
+		t.Errorf("Expected packets_dropped in log output")
 	}
 }

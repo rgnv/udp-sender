@@ -174,6 +174,7 @@ func TestMain_UsageFunction(t *testing.T) {
 		"-h, --help",
 		"-V, --version",
 		"-v, --verbose",
+		"-m, --mtu",
 		"PROTOCOL.md",
 		"Examples:",
 		"cat packets.bin",
@@ -227,5 +228,72 @@ func TestVersion_Variable(t *testing.T) {
 	// Should have a default value
 	if Version != "dev" && !strings.HasPrefix(Version, "v") {
 		t.Logf("Version set to: %s", Version)
+	}
+}
+
+func TestRun_MTUFlag(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name:      "valid MTU",
+			args:      []string{"udp-sender", "--mtu", "9000"},
+			expectErr: true, // Will fail on sender creation without root
+			errMsg:    "error creating UDP sender",
+		},
+		{
+			name:      "MTU too small",
+			args:      []string{"udp-sender", "--mtu", "500"},
+			expectErr: true,
+			errMsg:    "MTU must be between",
+		},
+		{
+			name:      "MTU too large",
+			args:      []string{"udp-sender", "--mtu", "10000"},
+			expectErr: true,
+			errMsg:    "MTU must be between",
+		},
+		{
+			name:      "default MTU",
+			args:      []string{"udp-sender"},
+			expectErr: true, // Will fail on sender creation without root
+			errMsg:    "error creating UDP sender",
+		},
+		{
+			name:      "minimum valid MTU",
+			args:      []string{"udp-sender", "--mtu", "576"},
+			expectErr: true, // Will fail on sender creation without root
+			errMsg:    "error creating UDP sender",
+		},
+		{
+			name:      "maximum valid MTU",
+			args:      []string{"udp-sender", "--mtu", "9000"},
+			expectErr: true, // Will fail on sender creation without root
+			errMsg:    "error creating UDP sender",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Skip if running as root (would need different assertions)
+			requireNonRoot(t)
+
+			var stdout, stderr bytes.Buffer
+			stdin := bytes.NewReader([]byte{})
+
+			err := run(tt.args, stdin, &stdout, &stderr)
+			if !tt.expectErr && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			if tt.expectErr && err == nil {
+				t.Error("Expected error but got none")
+			}
+			if err != nil && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Expected error containing %q, got: %v", tt.errMsg, err)
+			}
+		})
 	}
 }
