@@ -3,13 +3,12 @@ package main
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"syscall"
 )
 
 // PacketSender is an interface for sending UDP packets
 type PacketSender interface {
-	Send(message string, srcHost string, srcPort string, destHost string, destPort string) (int, error)
+	Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error)
 	Close() error
 }
 
@@ -67,70 +66,34 @@ func NewUDPSender() (*UDPSender, error) {
 
 // Send sends a message via raw UDP socket with spoofed source and destination
 // Implements PacketSender.Send
-// srcHost and srcPort specify the spoofed source address for this packet
-// destHost and destPort specify the destination address for this packet
-func (s *UDPSender) Send(message string, srcHost string, srcPort string, destHost string, destPort string) (int, error) {
+// srcIP and srcPort specify the spoofed source address for this packet
+// destIP and destPort specify the destination address for this packet
+func (s *UDPSender) Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error) {
 	payload := []byte(message)
 
-	// Resolve source address
-	srcIPs, err := net.LookupIP(srcHost)
-	if err != nil {
-		return 0, fmt.Errorf("failed to resolve source host: %w", err)
+	// Validate IPs
+	if srcIP == nil {
+		return 0, fmt.Errorf("source IP is nil")
 	}
-	if len(srcIPs) == 0 {
-		return 0, fmt.Errorf("no IP addresses found for source host: %s", srcHost)
-	}
-
-	// Resolve destination address
-	destIPs, err := net.LookupIP(destHost)
-	if err != nil {
-		return 0, fmt.Errorf("failed to resolve destination host: %w", err)
-	}
-	if len(destIPs) == 0 {
-		return 0, fmt.Errorf("no IP addresses found for destination host: %s", destHost)
+	if destIP == nil {
+		return 0, fmt.Errorf("destination IP is nil")
 	}
 
-	// Separate IPv4 and IPv6 addresses
-	var srcIPv4, srcIPv6, destIPv4, destIPv6 net.IP
-	for _, ip := range srcIPs {
-		if ip.To4() != nil && srcIPv4 == nil {
-			srcIPv4 = ip.To4()
-		} else if ip.To16() != nil && ip.To4() == nil && srcIPv6 == nil {
-			srcIPv6 = ip.To16()
-		}
-	}
-	for _, ip := range destIPs {
-		if ip.To4() != nil && destIPv4 == nil {
-			destIPv4 = ip.To4()
-		} else if ip.To16() != nil && ip.To4() == nil && destIPv6 == nil {
-			destIPv6 = ip.To16()
-		}
-	}
+	// Determine IP versions
+	srcIPv4 := srcIP.To4()
+	destIPv4 := destIP.To4()
 
-	// Parse ports
-	srcPortNum, err := strconv.Atoi(srcPort)
-	if err != nil || srcPortNum < 0 || srcPortNum > 65535 {
-		return 0, fmt.Errorf("invalid source port: %s", srcPort)
-	}
-	srcPortUint := uint16(srcPortNum)
-
-	destPortNum, err := strconv.Atoi(destPort)
-	if err != nil || destPortNum < 0 || destPortNum > 65535 {
-		return 0, fmt.Errorf("invalid destination port: %s", destPort)
-	}
-	destPortUint := uint16(destPortNum)
-
-	// Determine which IP family to use - prefer IPv4 if both are available
+	// Check if both are IPv4
 	if srcIPv4 != nil && destIPv4 != nil {
 		// Use IPv4
-		packet := s.buildPacket(payload, srcIPv4, srcPortUint, destIPv4, destPortUint)
+		packet := s.buildPacket(payload, srcIPv4, srcPort, destIPv4, destPort)
 
 		addr4 := &syscall.SockaddrInet4{
-			Port: int(destPortUint),
+			Port: int(destPort),
 		}
-		copy(addr4.Addr[:], destIPv4.To4())
+		copy(addr4.Addr[:], destIPv4)
 
-		err = syscall.Sendto(s.fdIPv4, packet, 0, addr4)
+		err := syscall.Sendto(s.fdIPv4, packet, 0, addr4)
 		if err != nil {
 			return 0, fmt.Errorf("failed to send packet to %s: %w", destIPv4, err)
 		}
@@ -138,25 +101,26 @@ func (s *UDPSender) Send(message string, srcHost string, srcPort string, destHos
 		return len(payload), nil
 	}
 
-	if srcIPv6 != nil && destIPv6 != nil {
+	// Check if both are IPv6
+	if srcIPv4 == nil && destIPv4 == nil {
 		// Use IPv6
-		packet := s.buildPacket(payload, srcIPv6, srcPortUint, destIPv6, destPortUint)
+		packet := s.buildPacket(payload, srcIP, srcPort, destIP, destPort)
 
 		addr6 := &syscall.SockaddrInet6{
-			Port: int(destPortUint),
+			Port: int(destPort),
 		}
-		copy(addr6.Addr[:], destIPv6.To16())
+		copy(addr6.Addr[:], destIP.To16())
 
-		err = syscall.Sendto(s.fdIPv6, packet, 0, addr6)
+		err := syscall.Sendto(s.fdIPv6, packet, 0, addr6)
 		if err != nil {
-			return 0, fmt.Errorf("failed to send packet to %s: %w", destIPv6, err)
+			return 0, fmt.Errorf("failed to send packet to %s: %w", destIP, err)
 		}
 
 		return len(payload), nil
 	}
 
-	// No compatible source/destination combination
-	return 0, fmt.Errorf("no compatible source/destination IP combination available (src: %s, dest: %s)", srcHost, destHost)
+	// Mismatched IP versions
+	return 0, fmt.Errorf("source and destination IP versions must match (src: %s, dest: %s)", srcIP, destIP)
 }
 
 // Close closes the raw socket(s)

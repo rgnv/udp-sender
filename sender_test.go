@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -48,7 +47,6 @@ func TestUDPSender_Send(t *testing.T) {
 
 	// Get the actual port assigned
 	serverAddr := conn.LocalAddr().(*net.UDPAddr)
-	serverPort := fmt.Sprintf("%d", serverAddr.Port)
 
 	// Create sender (no arguments needed)
 	sender, err := NewUDPSender()
@@ -60,29 +58,32 @@ func TestUDPSender_Send(t *testing.T) {
 	tests := []struct {
 		name    string
 		message string
-		srcPort string
+		srcPort uint16
 	}{
 		{
 			name:    "simple message",
 			message: "Hello, UDP!",
-			srcPort: "54321",
+			srcPort: 54321,
 		},
 		{
 			name:    "empty message",
 			message: "",
-			srcPort: "54322",
+			srcPort: 54322,
 		},
 		{
 			name:    "long message",
 			message: "This is a longer message to test UDP sending capabilities with raw sockets",
-			srcPort: "54323",
+			srcPort: 54323,
 		},
 	}
+
+	// Parse loopback IP once
+	loopbackIP := net.ParseIP("127.0.0.1")
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Send message with source and destination addresses
-			n, err := sender.Send(tt.message, "127.0.0.1", tt.srcPort, "127.0.0.1", serverPort)
+			n, err := sender.Send(tt.message, loopbackIP, tt.srcPort, loopbackIP, uint16(serverAddr.Port))
 			if err != nil {
 				t.Errorf("Send() error = %v", err)
 				return
@@ -106,9 +107,8 @@ func TestUDPSender_Send(t *testing.T) {
 			}
 
 			// Verify source port was spoofed
-			expectedPort, _ := strconv.Atoi(tt.srcPort)
-			if fromAddr.Port != expectedPort {
-				t.Errorf("Source port = %d, want %d", fromAddr.Port, expectedPort)
+			if fromAddr.Port != int(tt.srcPort) {
+				t.Errorf("Source port = %d, want %d", fromAddr.Port, tt.srcPort)
 			}
 		})
 	}
@@ -146,7 +146,9 @@ func TestPacketSender_Interface(t *testing.T) {
 	sender = udpSender
 
 	// Test Send through interface with destination
-	n, err := sender.Send("test", "10.0.0.1", "12345", "127.0.0.1", "8080")
+	srcIP := net.ParseIP("10.0.0.1")
+	destIP := net.ParseIP("127.0.0.1")
+	n, err := sender.Send("test", srcIP, 12345, destIP, 8080)
 	if err != nil {
 		t.Errorf("Interface Send() error = %v", err)
 	}
@@ -196,7 +198,6 @@ func BenchmarkUDPSender_Send(b *testing.B) {
 
 	// Get the actual port assigned
 	serverAddr := conn.LocalAddr().(*net.UDPAddr)
-	serverPort := fmt.Sprintf("%d", serverAddr.Port)
 
 	// Create sender
 	sender, err := NewUDPSender()
@@ -222,11 +223,12 @@ func BenchmarkUDPSender_Send(b *testing.B) {
 	defer func() { done <- true }()
 
 	message := "Benchmark message payload for UDP sender testing"
+	loopbackIP := net.ParseIP("127.0.0.1")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		srcPort := fmt.Sprintf("%d", 10000+(i%55000))
-		_, err := sender.Send(message, "127.0.0.1", srcPort, "127.0.0.1", serverPort)
+		srcPort := uint16(10000 + (i % 55000))
+		_, err := sender.Send(message, loopbackIP, srcPort, loopbackIP, uint16(serverAddr.Port))
 		if err != nil {
 			b.Errorf("Send() error = %v", err)
 		}
@@ -254,7 +256,6 @@ func BenchmarkUDPSender_SendVariablePayloadSizes(b *testing.B) {
 	defer func() { _ = conn.Close() }()
 
 	serverAddr := conn.LocalAddr().(*net.UDPAddr)
-	serverPort := fmt.Sprintf("%d", serverAddr.Port)
 
 	sender, err := NewUDPSender()
 	if err != nil {
@@ -278,6 +279,7 @@ func BenchmarkUDPSender_SendVariablePayloadSizes(b *testing.B) {
 	}()
 	defer func() { done <- true }()
 
+	loopbackIP := net.ParseIP("127.0.0.1")
 	sizes := []int{64, 256, 512, 1024, 4096, 8192}
 
 	for _, size := range sizes {
@@ -287,8 +289,8 @@ func BenchmarkUDPSender_SendVariablePayloadSizes(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				srcPort := fmt.Sprintf("%d", 10000+(i%55000))
-				_, err := sender.Send(payload, "127.0.0.1", srcPort, "127.0.0.1", serverPort)
+				srcPort := uint16(10000 + (i % 55000))
+				_, err := sender.Send(payload, loopbackIP, srcPort, loopbackIP, uint16(serverAddr.Port))
 				if err != nil {
 					b.Errorf("Send() error = %v", err)
 				}
