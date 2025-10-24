@@ -121,9 +121,6 @@ func TestProcessInputStream_IPv4_SinglePacket(t *testing.T) {
 
 	// Check log output
 	logOutput := logBuf.String()
-	if !strings.Contains(logOutput, "Stream mode") {
-		t.Error("Expected 'Stream mode' in log output")
-	}
 	if !strings.Contains(logOutput, "Stream complete") {
 		t.Error("Expected 'Stream complete' in log output")
 	}

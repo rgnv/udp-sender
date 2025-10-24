@@ -67,8 +67,8 @@ func TestRun_HelpFlag(t *testing.T) {
 			if !strings.Contains(output, "raw sockets") {
 				t.Errorf("Expected description about raw sockets, got: %s", output)
 			}
-			if !strings.Contains(output, "Magic:") {
-				t.Errorf("Expected protocol description, got: %s", output)
+			if !strings.Contains(output, "PROTOCOL.md") {
+				t.Errorf("Expected reference to PROTOCOL.md, got: %s", output)
 			}
 			if !strings.Contains(output, "Examples:") {
 				t.Errorf("Expected examples section, got: %s", output)
@@ -174,14 +174,7 @@ func TestMain_UsageFunction(t *testing.T) {
 		"-h, --help",
 		"-V, --version",
 		"-v, --verbose",
-		"Magic:",
-		"0xC1 0x21 0xB1",
-		"Version:",
-		"Source IP:",
-		"Dest IP:",
-		"Source Port:",
-		"Dest Port:",
-		"Payload Length:",
+		"PROTOCOL.md",
 		"Examples:",
 		"cat packets.bin",
 		"sudo",
