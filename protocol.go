@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 )
 
 // processInputStream reads packets from stdin using the binary protocol
@@ -63,39 +62,39 @@ func processInputStream(logger *Logger, sender *UDPSender, input io.Reader) erro
 		}
 
 		// Read source IP based on version
-		var srcIP string
+		var srcIP net.IP
 		if version == 4 {
 			// IPv4: 4 bytes
 			var srcIPBytes [4]byte
 			if _, err := io.ReadFull(reader, srcIPBytes[:]); err != nil {
 				return fmt.Errorf("reading IPv4 source address: %w", err)
 			}
-			srcIP = net.IP(srcIPBytes[:]).String()
+			srcIP = net.IP(srcIPBytes[:])
 		} else {
 			// IPv6: 16 bytes
 			var srcIPBytes [16]byte
 			if _, err := io.ReadFull(reader, srcIPBytes[:]); err != nil {
 				return fmt.Errorf("reading IPv6 source address: %w", err)
 			}
-			srcIP = net.IP(srcIPBytes[:]).String()
+			srcIP = net.IP(srcIPBytes[:])
 		}
 
 		// Read destination IP based on version (same size as source)
-		var destIP string
+		var destIP net.IP
 		if version == 4 {
 			// IPv4: 4 bytes
 			var destIPBytes [4]byte
 			if _, err := io.ReadFull(reader, destIPBytes[:]); err != nil {
 				return fmt.Errorf("reading IPv4 destination address: %w", err)
 			}
-			destIP = net.IP(destIPBytes[:]).String()
+			destIP = net.IP(destIPBytes[:])
 		} else {
 			// IPv6: 16 bytes
 			var destIPBytes [16]byte
 			if _, err := io.ReadFull(reader, destIPBytes[:]); err != nil {
 				return fmt.Errorf("reading IPv6 destination address: %w", err)
 			}
-			destIP = net.IP(destIPBytes[:]).String()
+			destIP = net.IP(destIPBytes[:])
 		}
 
 		// Read source port (2 bytes, big endian)
@@ -128,7 +127,7 @@ func processInputStream(logger *Logger, sender *UDPSender, input io.Reader) erro
 		}
 
 		// Send the packet
-		n, err = sender.Send(string(payload), srcIP, strconv.Itoa(int(srcPort)), destIP, strconv.Itoa(int(destPort)))
+		n, err = sender.Send(string(payload), srcIP, srcPort, destIP, destPort)
 		if err != nil {
 			return fmt.Errorf("sending packet %d: %w", packetCount+1, err)
 		}
