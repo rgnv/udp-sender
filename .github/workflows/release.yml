@@ -167,6 +167,7 @@ jobs:
           --vendor "Cribl, Inc." \
           --after-install ../scripts/postinstall.sh \
           --before-remove ../scripts/preremove.sh \
+          -p "udp-sender-${PKG_VERSION}-amd64.deb" \
           udp-sender-linux-amd64=/usr/bin/udp-sender
         
         # Create DEB package for ARM64
@@ -181,6 +182,7 @@ jobs:
           --vendor "Cribl, Inc." \
           --after-install ../scripts/postinstall.sh \
           --before-remove ../scripts/preremove.sh \
+          -p "udp-sender-${PKG_VERSION}-arm64.deb" \
           udp-sender-linux-arm64=/usr/bin/udp-sender
         
         # Create RPM package for AMD64 (x86_64)
@@ -238,8 +240,8 @@ jobs:
         
         | Distribution | Architecture | Package |
         |--------------|--------------|---------|
-        | Debian/Ubuntu | AMD64 | \`udp-sender_${{ steps.version.outputs.PKG_VERSION }}_amd64.deb\` |
-        | Debian/Ubuntu | ARM64 | \`udp-sender_${{ steps.version.outputs.PKG_VERSION }}_arm64.deb\` |
+        | Debian/Ubuntu | AMD64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-amd64.deb\` |
+        | Debian/Ubuntu | ARM64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-arm64.deb\` |
         | RHEL/CentOS/Fedora | x86_64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm\` |
         | RHEL/CentOS/Fedora | aarch64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.aarch64.rpm\` |
         
@@ -260,10 +262,10 @@ jobs:
         
         \`\`\`bash
         # Download the package
-        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender_${{ steps.version.outputs.PKG_VERSION }}_amd64.deb
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-amd64.deb
         
         # Install (creates udp-senders group automatically)
-        sudo dpkg -i udp-sender_${{ steps.version.outputs.PKG_VERSION }}_amd64.deb
+        sudo dpkg -i udp-sender-${{ steps.version.outputs.PKG_VERSION }}-amd64.deb
         
         # Add your user to the udp-senders group
         sudo usermod -aG udp-senders \$USER
