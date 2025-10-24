@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -306,5 +308,199 @@ func TestLogger_FieldOrder(t *testing.T) {
 	// Verify time is the first field (position 1, after opening brace)
 	if timePos != 1 {
 		t.Errorf("time should be the first field, but found at position %d. JSON: %s", timePos, jsonStr)
+	}
+}
+
+func TestNewLogger(t *testing.T) {
+	logger := NewLogger()
+
+	if logger == nil {
+		t.Fatal("NewLogger() returned nil")
+	}
+
+	// Verify default level is Info
+	if logger.minLevel != LogLevelInfo {
+		t.Errorf("Expected default level to be Info, got %s", logger.minLevel)
+	}
+
+	// Verify output is os.Stderr (can't compare directly, but check it's not nil)
+	if logger.output == nil {
+		t.Error("Expected output to be set, got nil")
+	}
+}
+
+func TestNewLoggerWithLevel(t *testing.T) {
+	tests := []struct {
+		name  string
+		level LogLevel
+	}{
+		{"Debug level", LogLevelDebug},
+		{"Info level", LogLevelInfo},
+		{"Warn level", LogLevelWarn},
+		{"Error level", LogLevelError},
+		{"Fatal level", LogLevelFatal},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := NewLoggerWithLevel(tt.level)
+
+			if logger == nil {
+				t.Fatal("NewLoggerWithLevel() returned nil")
+			}
+
+			if logger.minLevel != tt.level {
+				t.Errorf("Expected level to be %s, got %s", tt.level, logger.minLevel)
+			}
+
+			if logger.output == nil {
+				t.Error("Expected output to be set, got nil")
+			}
+		})
+	}
+}
+
+func TestLogger_UnmarshalableFields(t *testing.T) {
+	var buf bytes.Buffer
+	logger := &Logger{
+		output:   &buf,
+		minLevel: LogLevelDebug,
+	}
+
+	// Create a channel, which cannot be marshaled to JSON
+	ch := make(chan int)
+
+	logger.Info("Test message", map[string]any{
+		"valid_field":   "should appear",
+		"invalid_field": ch,
+		"another_valid": 42,
+	})
+
+	var logMap map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &logMap); err != nil {
+		t.Fatalf("Failed to parse JSON output: %v", err)
+	}
+
+	// Verify valid fields are present
+	if logMap["valid_field"] != "should appear" {
+		t.Errorf("Expected valid_field to be present, got %v", logMap["valid_field"])
+	}
+	if logMap["another_valid"] != float64(42) {
+		t.Errorf("Expected another_valid to be present, got %v", logMap["another_valid"])
+	}
+
+	// Verify invalid field was skipped
+	if _, exists := logMap["invalid_field"]; exists {
+		t.Error("Expected invalid_field to be skipped")
+	}
+}
+
+func TestLogger_FatalLevel(t *testing.T) {
+	var buf bytes.Buffer
+	logger := &Logger{
+		output:   &buf,
+		minLevel: LogLevelDebug,
+	}
+
+	// We can't actually test Fatal/Fatalf without them calling os.Exit()
+	// But we can test that Fatal level is filtered correctly using the log() method directly
+	logger.log(LogLevelFatal, "Fatal message", map[string]any{"error": "critical"})
+
+	var logMap map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &logMap); err != nil {
+		t.Fatalf("Failed to parse JSON output: %v", err)
+	}
+
+	if logMap["level"] != "fatal" {
+		t.Errorf("Expected level 'fatal', got '%s'", logMap["level"])
+	}
+	if logMap["message"] != "Fatal message" {
+		t.Errorf("Expected message 'Fatal message', got '%s'", logMap["message"])
+	}
+	if logMap["error"] != "critical" {
+		t.Errorf("Expected error field to be 'critical', got '%v'", logMap["error"])
+	}
+}
+
+// TestLogger_Fatal tests the Fatal method using subprocess pattern
+func TestLogger_Fatal(t *testing.T) {
+	if os.Getenv("TEST_FATAL") == "1" {
+		// This is the subprocess that will call Fatal
+		logger := &Logger{
+			output:   os.Stderr,
+			minLevel: LogLevelDebug,
+		}
+		logger.Fatal("Fatal error occurred", map[string]any{
+			"code": 500,
+		})
+		return
+	}
+
+	// This is the parent test process
+	cmd := exec.Command(os.Args[0], "-test.run=TestLogger_Fatal")
+	cmd.Env = append(os.Environ(), "TEST_FATAL=1")
+
+	// Capture stderr
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	// Fatal should cause exit with code 1
+	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+		// Expected: process exited with non-zero status
+
+		// Verify the log output was written
+		output := stderr.String()
+		if !strings.Contains(output, "Fatal error occurred") {
+			t.Errorf("Expected error message in output, got: %s", output)
+		}
+		if !strings.Contains(output, "fatal") {
+			t.Errorf("Expected 'fatal' level in output, got: %s", output)
+		}
+		if !strings.Contains(output, "500") {
+			t.Errorf("Expected code field in output, got: %s", output)
+		}
+	} else {
+		t.Errorf("Expected process to exit with error, got: %v", err)
+	}
+}
+
+// TestLogger_Fatalf tests the Fatalf method using subprocess pattern
+func TestLogger_Fatalf(t *testing.T) {
+	if os.Getenv("TEST_FATALF") == "1" {
+		// This is the subprocess that will call Fatalf
+		logger := &Logger{
+			output:   os.Stderr,
+			minLevel: LogLevelDebug,
+		}
+		logger.Fatalf("Fatal error: %s (code: %d)", "connection failed", 500)
+		return
+	}
+
+	// This is the parent test process
+	cmd := exec.Command(os.Args[0], "-test.run=TestLogger_Fatalf")
+	cmd.Env = append(os.Environ(), "TEST_FATALF=1")
+
+	// Capture stderr
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	// Fatalf should cause exit with code 1
+	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+		// Expected: process exited with non-zero status
+
+		// Verify the log output was written
+		output := stderr.String()
+		if !strings.Contains(output, "Fatal error: connection failed (code: 500)") {
+			t.Errorf("Expected formatted error message in output, got: %s", output)
+		}
+		if !strings.Contains(output, "fatal") {
+			t.Errorf("Expected 'fatal' level in output, got: %s", output)
+		}
+	} else {
+		t.Errorf("Expected process to exit with error, got: %v", err)
 	}
 }

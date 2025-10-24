@@ -14,3 +14,10 @@ func requireRoot(t *testing.T) {
 		t.Skip("This test requires root privileges (run with sudo)")
 	}
 }
+
+// requireNonRoot skips the test if running as root
+func requireNonRoot(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("This test must not be run as root")
+	}
+}

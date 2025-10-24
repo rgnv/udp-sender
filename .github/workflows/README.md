@@ -84,7 +84,7 @@ Container images are published to GitHub Container Registry (ghcr.io) with each 
 ```bash
 # Pull and run the latest version
 docker pull ghcr.io/criblio/udp-sender:latest
-docker run --rm -i --cap-add=NET_RAW ghcr.io/criblio/udp-sender:latest 514 example.com
+cat packets.bin | docker run --rm -i --cap-add=NET_RAW ghcr.io/criblio/udp-sender:latest
 
 # Pull a specific version
 docker pull ghcr.io/criblio/udp-sender:1.0.0
@@ -106,5 +106,4 @@ View images at: <https://github.com/criblio/udp-sender/pkgs/container/udp-sender
 
 ## Monitoring
 
-View workflow runs at:
-<https://github.com/criblio/udp-sender/actions>
+View workflow runs at: <https://github.com/criblio/udp-sender/actions>

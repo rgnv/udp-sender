@@ -8,24 +8,12 @@ import (
 	"net"
 )
 
-// processInputStream reads packets from stdin using the binary protocol
-// Binary protocol per packet:
-//   - Magic:          3 bytes (0xC1 0x21 0xB1 for synchronization detection)
-//   - Version:        1 byte (4 = IPv4, 6 = IPv6)
-//   - Source IP:      4 bytes (IPv4) or 16 bytes (IPv6), network byte order
-//   - Dest IP:        4 bytes (IPv4) or 16 bytes (IPv6), network byte order
-//   - Source Port:    2 bytes (uint16, network byte order/big endian)
-//   - Dest Port:      2 bytes (uint16, network byte order/big endian)
-//   - Payload Length: 2 bytes (uint16, network byte order/big endian)
-//   - Payload:        N bytes (variable length)
-func processInputStream(logger *Logger, sender *UDPSender, input io.Reader) error {
+// processInputStream reads packets from stdin using the binary protocol.
+// See PROTOCOL.md for complete protocol specification.
+func processInputStream(logger *Logger, sender PacketSender, input io.Reader) error {
 	reader := bufio.NewReader(input)
 	packetCount := 0
 	bytesSent := uint64(0)
-
-	logger.Info("Stream mode: reading packets from stdin", map[string]any{
-		"protocol": "[Magic(3)][Version(1)][SrcIP(4/16)][DestIP(4/16)][SrcPort(2)][DestPort(2)][PayloadLen(2)][Payload(N)]",
-	})
 
 	for {
 		// Read and validate magic number
