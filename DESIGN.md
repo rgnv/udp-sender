@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `UDPSender` is implemented as a Go class using idiomatic Go patterns: structs with methods, interfaces, and proper encapsulation. The key design feature is **per-packet source and destination address specification**, allowing complete dynamic control of IP and port for each transmitted packet.
+The `UDPSender` is implemented as a Go class using idiomatic Go patterns: structs with methods, interfaces, and proper encapsulation. The key design feature is **per-packet source and destination address specification**, allowing complete dynamic control of both source and destination IP and port for each transmitted packet. The implementation supports both IPv4 and IPv6 through separate raw sockets.
 
 ```mermaid
 graph TD
@@ -30,31 +30,31 @@ graph TD
 
 ```go
 type PacketSender interface {
-    Send(message string, srcHost string, srcPort string, destHost string, destPort string) (int, error)
+    Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error)
     Close() error
 }
 ```
 
-**Design Decision**: Both source and destination IP and port are specified per packet in the `Send()` method for maximum flexibility.
+**Design Decision**: Both source and destination IP and port are specified per packet in the `Send()` method for maximum flexibility. Uses proper types (`net.IP` and `uint16`) instead of strings for type safety and efficiency.
 
 ```mermaid
 classDiagram
     class PacketSender {
         <<interface>>
-        +Send(message, srcHost, srcPort, destHost, destPort) (int, error)
+        +Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error)
         +Close() error
     }
     
     class UDPSender {
         -int fdIPv4
         -int fdIPv6
-        +Send(payload, srcIP, srcPort, destIP, destPort) (int, error)
+        +Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error)
         +Close() error
-        -buildPacket(payload, srcIP, srcPort, destIP, destPort) []byte
-        -buildIPv4Header(dataLen, srcIP, destIP) []byte
-        -buildIPv6Header(dataLen, srcIP, destIP) []byte
-        -buildUDPHeader(payload, srcIP, srcPort, destIP, destPort, isIPv6) []byte
-        -calculateUDPChecksum(udpHeader, payload, srcIP, destIP, isIPv6) uint16
+        -buildPacket(payload []byte, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) []byte
+        -buildIPv4Header(dataLen int, srcIP net.IP, destIP net.IP) []byte
+        -buildIPv6Header(dataLen int, srcIP net.IP, destIP net.IP) []byte
+        -buildUDPHeader(payload []byte, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16, isIPv6 bool) []byte
+        -calculateUDPChecksum(udpHeader []byte, payload []byte, srcIP net.IP, destIP net.IP, isIPv6 bool) uint16
     }
     
     PacketSender <|.. UDPSender : implements
@@ -69,7 +69,7 @@ type UDPSender struct {
 }
 ```
 
-**Key Difference**: Neither source nor destination IP and port are stored in the struct. They are all parameters to the `Send()` method, enabling complete dynamic control per packet.
+**Key Design Philosophy**: The struct stores only what's absolutely necessary (socket file descriptors). Neither source nor destination IP and port are stored. All addressing information is passed as parameters to the `Send()` method, enabling complete dynamic control of both source and destination per packet.
 
 ## Object-Oriented Principles
 
@@ -78,30 +78,18 @@ type UDPSender struct {
 **Private Fields**: All struct fields use lowercase names, making them package-private:
 
 ```go
-fd       int     // Not accessible outside the class
-destIP   net.IP  // Not accessible outside the class
+fdIPv4  int     // Not accessible outside the package - IPv4 raw socket
+fdIPv6  int     // Not accessible outside the package - IPv6 raw socket
 ```
 
-**Public Getters**: Destination properties are accessed through getter methods:
-
-```go
-func (s *UDPSender) DestinationIPs() []net.IP {
-    var ips []net.IP
-    ips = append(ips, s.destIPv4s...)
-    ips = append(ips, s.destIPv6s...)
-    return ips
-}
-func (s *UDPSender) DestinationPort() uint16 { return s.destPort }
-```
-
-**No Source Getters**: Source IP/port are NOT stored, so there are no getters for them. They are specified per call to `Send()`.
+**No Getters**: Neither source nor destination IP/port are stored in the struct, so there are no getter methods. Both source and destination are specified per call to `Send()` for complete per-packet control.
 
 ### 2. Constructor Pattern
 
 Factory function to create and initialize instances:
 
 ```go
-func NewUDPSender(destHost, destPort string) (*UDPSender, error)
+func NewUDPSender() (*UDPSender, error)
 ```
 
 Benefits:
@@ -109,8 +97,8 @@ Benefits:
 - Validation before object creation
 - Complex initialization logic
 - Returns errors instead of invalid objects
-- Resource acquisition (raw socket)
-- Destination-only construction (source specified per packet)
+- Resource acquisition (creates both IPv4 and IPv6 raw sockets)
+- No destination needed (both source and destination specified per packet)
 
 ### 3. Interface Implementation
 
@@ -131,20 +119,18 @@ var _ PacketSender = (*UDPSender)(nil)
 
 **Public Methods** (exported):
 
-- `Send(message, srcHost, srcPort string) (int, error)` - Send UDP packet with specified source
-- `Close() error` - Release resources
-- `DestinationIPs() []net.IP` - Getter for all destination IPs
-- `DestinationPort() uint16` - Getter for destination port
-- `String() string` - String representation
+- `Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error)` - Send UDP packet with specified source and destination
+- `Close() error` - Release resources (closes both IPv4 and IPv6 sockets)
 
 **Private Methods** (package-private):
 
-- `buildPacket(payload []byte, srcIP net.IP, srcPort uint16) []byte`
-- `buildIPHeader(dataLen int, srcIP net.IP) []byte`
-- `buildUDPHeader(payload []byte, srcIP net.IP, srcPort uint16) []byte`
-- `calculateUDPChecksum(udpHeader, payload []byte, srcIP net.IP) uint16`
+- `buildPacket(payload []byte, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) []byte`
+- `buildIPv4Header(dataLen int, srcIP net.IP, destIP net.IP) []byte`
+- `buildIPv6Header(dataLen int, srcIP net.IP, destIP net.IP) []byte`
+- `buildUDPHeader(payload []byte, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16, isIPv6 bool) []byte`
+- `calculateUDPChecksum(udpHeader []byte, payload []byte, srcIP net.IP, destIP net.IP, isIPv6 bool) uint16`
 
-**Key Design**: All packet-building methods accept source IP/port as parameters rather than reading from struct fields.
+**Key Design**: All packet-building methods accept both source and destination as parameters. Nothing is stored in the struct except the socket file descriptors.
 
 ```mermaid
 sequenceDiagram
@@ -156,16 +142,15 @@ sequenceDiagram
     participant RawSocket
     participant Network
     
-    Client->>UDPSender: Send(payload, "10.0.0.1", "5000")
-    Note over UDPSender: Select destination IP<br/>(round-robin)
-    UDPSender->>buildPacket: buildPacket(payload, srcIP, srcPort, destIP)
+    Client->>UDPSender: Send(payload, srcIP, srcPort, destIP, destPort)
+    UDPSender->>buildPacket: buildPacket(payload, srcIP, srcPort, destIP, destPort)
     buildPacket->>buildIPv4Header: buildIPv4Header(len, srcIP, destIP)
     buildIPv4Header-->>buildPacket: IP header bytes
-    buildPacket->>buildUDPHeader: buildUDPHeader(payload, srcIP, srcPort, destIP)
+    buildPacket->>buildUDPHeader: buildUDPHeader(payload, srcIP, srcPort, destIP, destPort, isIPv6)
     Note over buildUDPHeader: Calculate checksum
     buildUDPHeader-->>buildPacket: UDP header bytes
     buildPacket-->>UDPSender: Complete packet
-    UDPSender->>RawSocket: syscall.Sendto(packet, destIP)
+    UDPSender->>RawSocket: syscall.Sendto(packet, destAddr)
     RawSocket->>Network: Transmit packet
     Network-->>Client: Bytes sent / error
 ```
@@ -229,7 +214,7 @@ graph TB
 ### Direct Instantiation
 
 ```go
-// Create sender (no destination needed)
+// Create sender (no parameters needed - creates both IPv4 and IPv6 sockets)
 sender, err := NewUDPSender()
 if err != nil {
     log.Fatal(err)
@@ -237,7 +222,9 @@ if err != nil {
 defer sender.Close()
 
 // Specify source and destination per packet
-n, err := sender.Send("Hello, World!", "10.0.0.1", "12345", "192.168.1.100", "514")
+srcIP := net.ParseIP("10.0.0.1")
+destIP := net.ParseIP("192.168.1.100")
+n, err := sender.Send("Hello, World!", srcIP, 12345, destIP, 514)
 ```
 
 ### Dynamic Spoofing
@@ -247,21 +234,26 @@ sender, _ := NewUDPSender()
 defer sender.Close()
 
 // Send from different sources to different destinations
-sender.Send("Packet 1", "10.0.0.1", "5001", "192.168.1.100", "514")
-sender.Send("Packet 2", "10.0.0.2", "5002", "192.168.1.101", "514")
-sender.Send("Packet 3", "192.168.1.5", "6000", "10.0.0.1", "8080")
+sender.Send("Packet 1", net.ParseIP("10.0.0.1"), 5001, net.ParseIP("192.168.1.100"), 514)
+sender.Send("Packet 2", net.ParseIP("10.0.0.2"), 5002, net.ParseIP("192.168.1.101"), 514)
+sender.Send("Packet 3", net.ParseIP("192.168.1.5"), 6000, net.ParseIP("10.0.0.1"), 8080)
+
+// IPv6 works too
+sender.Send("IPv6 Packet", net.ParseIP("2001:db8::1"), 5000, net.ParseIP("2001:db8::100"), 8080)
 ```
 
 ### Interface-Based
 
 ```go
-func sendPacket(ps PacketSender, message, srcHost, srcPort, destHost, destPort string) error {
-    _, err := ps.Send(message, srcHost, srcPort, destHost, destPort)
+func sendPacket(ps PacketSender, message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) error {
+    _, err := ps.Send(message, srcIP, srcPort, destIP, destPort)
     return err
 }
 
 sender, _ := NewUDPSender()
-sendPacket(sender, "Using interface", "10.0.0.1", "12345", "192.168.1.100", "514")
+srcIP := net.ParseIP("10.0.0.1")
+destIP := net.ParseIP("192.168.1.100")
+sendPacket(sender, "Using interface", srcIP, 12345, destIP, 514)
 ```
 
 ### Polymorphic Collections
@@ -271,11 +263,12 @@ var senders []PacketSender
 senders = append(senders, udpSender1)
 senders = append(senders, udpSender2)
 
-// Each packet can have different source
+// Each packet can have different source and destination
+destIP := net.ParseIP("192.168.1.100")
 for i, sender := range senders {
-    srcIP := fmt.Sprintf("10.0.0.%d", i+1)
-    srcPort := fmt.Sprintf("%d", 5000+i)
-    sender.Send("Broadcast message", srcIP, srcPort)
+    srcIP := net.ParseIP(fmt.Sprintf("10.0.0.%d", i+1))
+    srcPort := uint16(5000 + i)
+    sender.Send("Broadcast message", srcIP, srcPort, destIP, 514)
 }
 ```
 
@@ -283,24 +276,24 @@ for i, sender := range senders {
 
 ```mermaid
 graph LR
-    subgraph "Old Design - Fixed Source"
-        A1[Constructor] -->|Sets once| B1[srcIP: 10.0.0.1<br/>srcPort: 12345]
-        B1 --> C1[Send Packet 1<br/>from 10.0.0.1:12345]
-        B1 --> D1[Send Packet 2<br/>from 10.0.0.1:12345]
-        B1 --> E1[Send Packet 3<br/>from 10.0.0.1:12345]
+    subgraph "Old Design - Fixed Source & Destination"
+        A1[Constructor<br/>with params] -->|Sets once| B1[srcIP, srcPort<br/>destIP, destPort]
+        B1 --> C1[Send Packet 1<br/>10.0.0.1:12345 → 192.168.1.100:514]
+        B1 --> D1[Send Packet 2<br/>10.0.0.1:12345 → 192.168.1.100:514]
+        B1 --> E1[Send Packet 3<br/>10.0.0.1:12345 → 192.168.1.100:514]
         style B1 fill:#ffe1e1
     end
     
-    subgraph "New Design - Dynamic Source"
-        A2[Constructor] -->|No source stored| B2[Only destIP & destPort]
-        B2 --> C2[Send Packet 1<br/>from 10.0.0.1:5001]
-        B2 --> D2[Send Packet 2<br/>from 10.0.0.2:5002]
-        B2 --> E2[Send Packet 3<br/>from 192.168.1.5:9999]
+    subgraph "Current Design - Fully Dynamic"
+        A2[Constructor<br/>no params] -->|Nothing stored| B2[Only socket FDs<br/>fdIPv4, fdIPv6]
+        B2 --> C2[Send Packet 1<br/>10.0.0.1:5001 → 192.168.1.100:514]
+        B2 --> D2[Send Packet 2<br/>10.0.0.2:5002 → 192.168.1.101:8080]
+        B2 --> E2[Send Packet 3<br/>192.168.1.5:9999 → 10.0.0.1:443]
         style B2 fill:#e1ffe1
     end
 ```
 
-### Old Design (Fixed Source)
+### Old Design (Fixed Source & Destination)
 
 ```go
 type UDPSender struct {
@@ -311,56 +304,36 @@ type UDPSender struct {
     srcPort  uint16    // Fixed at construction
 }
 
-// Source was fixed - couldn't change per packet
+// Source and destination were fixed - couldn't change per packet
 sender, _ := NewUDPSender("dest", "8080", "src", "12345")
-sender.Send("Message 1")  // Always from src:12345
-sender.Send("Message 2")  // Always from src:12345
+sender.Send("Message 1")  // Always from src:12345 to dest:8080
+sender.Send("Message 2")  // Always from src:12345 to dest:8080
 ```
 
-### New Design (Dynamic Source)
+### Current Design (Dynamic Source AND Destination)
 
 ```go
 type UDPSender struct {
-    fd       int
-    destIP   net.IP
-    destPort uint16
-    // No source fields - specified per packet!
+    fdIPv4   int  // IPv4 raw socket
+    fdIPv6   int  // IPv6 raw socket
+    // No source or destination fields - both specified per packet!
 }
 
-// Source can change for each packet
-sender, _ := NewUDPSender("dest", "8080")
-sender.Send("Message 1", "10.0.0.1", "5001")  // From 10.0.0.1:5001
-sender.Send("Message 2", "10.0.0.2", "5002")  // From 10.0.0.2:5002
-sender.Send("Message 3", "192.168.1.5", "9999")  // From 192.168.1.5:9999
+// Both source and destination can change for each packet
+sender, _ := NewUDPSender()  // No parameters needed
+sender.Send("Message 1", net.ParseIP("10.0.0.1"), 5001, net.ParseIP("192.168.1.100"), 514)
+sender.Send("Message 2", net.ParseIP("10.0.0.2"), 5002, net.ParseIP("192.168.1.101"), 8080)
+sender.Send("Message 3", net.ParseIP("192.168.1.5"), 9999, net.ParseIP("10.0.0.1"), 443)
 ```
 
-**Benefits of New Design**:
+**Benefits of Current Design**:
 
-- ✅ More flexible - change source per packet
-- ✅ Simpler struct - fewer fields
-- ✅ Better for simulating distributed sources
-- ✅ Reduces state management
-- ✅ Easier to understand - source is explicit in each call
-
-### Multiple Destination Support
-
-```mermaid
-graph TD
-    A[Client: Send Packet 1] -->|DNS Lookup| B[Host Resolution]
-    B --> C{Multiple IPs?}
-    C -->|Yes| D[Round-Robin Selection]
-    C -->|No| E[Single IP]
-    D --> F[destIPv4s: 203.0.113.1, 203.0.113.2, 203.0.113.3]
-    D --> G[destIPv6s: 2001:db8::1, 2001:db8::2]
-    F -->|nextIPv4Idx: 0| H[Packet 1 → 203.0.113.1]
-    F -->|nextIPv4Idx: 1| I[Packet 2 → 203.0.113.2]
-    F -->|nextIPv4Idx: 2| J[Packet 3 → 203.0.113.3]
-    F -->|nextIPv4Idx: 0| K[Packet 4 → 203.0.113.1<br/>cycles back]
-    
-    style D fill:#e1f5ff
-    style F fill:#fff4e1
-    style G fill:#fff4e1
-```
+- ✅ Maximum flexibility - change both source AND destination per packet
+- ✅ Simplest struct - only socket file descriptors
+- ✅ Perfect for simulating distributed sources and targets
+- ✅ Minimal state management
+- ✅ Explicit parameters - source and destination clear in each call
+- ✅ IPv4 and IPv6 support with automatic protocol detection
 
 ### Packet Structure
 
@@ -394,25 +367,39 @@ graph LR
 ```go
 type MockSender struct {
     sentMessages []string
+    sentFromIPs  []net.IP
+    sentToIPs    []net.IP
 }
 
-func (m *MockSender) Send(msg string, srcHost, srcPort string) (int, error) {
+func (m *MockSender) Send(msg string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error) {
     m.sentMessages = append(m.sentMessages, msg)
+    m.sentFromIPs = append(m.sentFromIPs, srcIP)
+    m.sentToIPs = append(m.sentToIPs, destIP)
     return len(msg), nil
 }
 
-func (m *MockSender) DestinationIPs() []net.IP { return []net.IP{net.ParseIP("127.0.0.1")} }
-// ... other interface methods
+func (m *MockSender) Close() error { return nil }
 ```
 
 ### Test Through Interface
 
 ```go
 func TestSendLogic(t *testing.T) {
-    var sender PacketSender = &MockSender{}
+    mock := &MockSender{}
+    var sender PacketSender = mock
+    
     // Test without needing root privileges
-    result := sendPacket(sender, "test")
-    // ...
+    srcIP := net.ParseIP("10.0.0.1")
+    destIP := net.ParseIP("192.168.1.100")
+    n, err := sender.Send("test", srcIP, 5000, destIP, 514)
+    
+    // Verify
+    if err != nil || n != 4 {
+        t.Errorf("unexpected result")
+    }
+    if len(mock.sentMessages) != 1 || mock.sentMessages[0] != "test" {
+        t.Errorf("message not sent correctly")
+    }
 }
 ```
 
@@ -503,13 +490,17 @@ Can be added without breaking existing code.
 
 ```go
 type RateLimitedSender struct {
-    sender PacketSender
+    sender  PacketSender
     limiter *rate.Limiter
 }
 
-func (r *RateLimitedSender) Send(msg string) (int, error) {
-    r.limiter.Wait()
-    return r.sender.Send(msg)
+func (r *RateLimitedSender) Send(msg string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error) {
+    r.limiter.Wait(context.Background())
+    return r.sender.Send(msg, srcIP, srcPort, destIP, destPort)
+}
+
+func (r *RateLimitedSender) Close() error {
+    return r.sender.Close()
 }
 ```
 

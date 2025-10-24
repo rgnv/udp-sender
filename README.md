@@ -127,11 +127,11 @@ docker pull ghcr.io/criblio/udp-sender:latest
 # Run with a packet generator
 go run packet-generator.go -count 10 | \
   docker run --rm -i --cap-add=NET_RAW \
-  ghcr.io/criblio/udp-sender:latest 514 192.168.1.100
+  ghcr.io/criblio/udp-sender:latest
 
 # Using a specific version
-docker run --rm -i --cap-add=NET_RAW \
-  ghcr.io/criblio/udp-sender:1.0.0 514 example.com
+cat packets.bin | docker run --rm -i --cap-add=NET_RAW \
+  ghcr.io/criblio/udp-sender:1.0.0
 ```
 
 **Important**: The container requires `--cap-add=NET_RAW` capability to create raw sockets.
@@ -147,6 +147,11 @@ docker run --rm -i --cap-add=NET_RAW \
 ```bash
 git clone https://github.com/criblio/udp-sender.git
 cd udp-sender
+
+# Using Make (recommended)
+make build
+
+# Or using Go directly
 go build
 ```
 
@@ -160,13 +165,14 @@ Instead of running as root, you can grant the `CAP_NET_RAW` capability to the bi
 
 ```bash
 # Build the application
-go build -o udp-sender .
+make build
+# Or: go build -o udp-sender .
 
 # Grant CAP_NET_RAW capability
 sudo setcap cap_net_raw+ep ./udp-sender
 
 # Now you can run without sudo
-./udp-sender 192.168.1.100 514 < packets.bin
+cat packets.bin | ./udp-sender
 ```
 
 **Benefits of using capabilities**:
@@ -184,7 +190,8 @@ Usage: udp-sender [OPTIONS]
 
 Options:
   -h, --help       Show this help message
-  -v, --version    Print version and exit
+  -V, --version    Print version and exit
+  -v, --verbose    Enable verbose logging (debug level)
 ```
 
 The application reads packets from stdin using the binary protocol format. Each packet specifies its own source and destination IP address and port.
@@ -194,8 +201,8 @@ The application reads packets from stdin using the binary protocol format. Each 
 Check the installed version:
 
 ```bash
-./udp-sender -v
-# Or: ./udp-sender --version
+./udp-sender -V
+# Or: ./udp-sender -version
 # Output: udp-sender version v1.0.0
 ```
 
@@ -254,38 +261,56 @@ packet-beta
   336-399: "Payload (NB)"
 ```
 
-- **Magic**: `0xC1 0x21 0xB1` - Magic number for synchronization detection
-- **Version**: `4` for IPv4 (4-byte IP) or `6` for IPv6 (16-byte IP)
-- **Source IP**: Variable length based on version (4 or 16 bytes)
-- **Dest IP**: Variable length based on version (4 or 16 bytes)
-- **Source Port**: 2 bytes (uint16, big endian)
-- **Dest Port**: 2 bytes (uint16, big endian)
-- **Payload Length**: 2 bytes (uint16, big endian)
-- **Payload**: Variable length data
+**Quick Reference**:
 
-The magic number helps detect stream misalignment or corruption. If an invalid magic number is detected, the stream processing will fail with a clear error message.
+- Magic number (`0xC1 0x21 0xB1`) for synchronization
+- Version byte (`4` = IPv4, `6` = IPv6)
+- Source and destination IP addresses (variable length)
+- Source and destination ports (2 bytes each)
+- Payload length and data (variable)
 
-See [PROTOCOL.md](PROTOCOL.md) for complete protocol specification and examples in Python, Node.js, and Go.
+See [PROTOCOL.md](PROTOCOL.md) for complete protocol specification, field details, error handling, and examples in Python, Node.js, and Go.
 
 ## Development
 
 ### Running Tests
 
+**Using Make (Recommended)**:
+
+```bash
+# Run all tests (non-root tests only, ~81% coverage)
+make test
+
+# Run all tests with root privileges (~91% coverage)
+sudo make test-root
+
+# Generate coverage report (requires root for full coverage)
+sudo make coverage-root
+
+# View coverage report
+open coverage.html  # macOS
+# Or: xdg-open coverage.html  # Linux
+```
+
+**Using Go directly**:
+
 ```bash
 # Run all tests (non-root tests only)
 go test -v ./...
 
-# Run all tests including those requiring root
-sudo go test -v ./...
+# Run all tests with root (requires -count=1 to bypass cache)
+sudo go test -v -count=1 ./...
 
 # Run tests with coverage
-sudo go test -v -race -coverprofile=coverage.out ./...
-
-# View coverage report
+sudo go test -v -race -count=1 -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
 
-**Note**: Tests that require root privileges will be skipped automatically when not running with sudo.
+**Note**:
+
+- Tests that require root privileges will be skipped automatically when not running with sudo
+- Non-root tests achieve ~81% coverage; full coverage (~91%) requires root privileges
+- The Makefile automatically includes `-count=1` for root tests to bypass Go's test cache
 
 ### Running Linter
 
@@ -297,26 +322,34 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 golangci-lint run
 ```
 
-### Using the Makefile
+### Makefile Targets
+
+The Makefile provides convenient targets for common tasks:
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Build the application (use `VERSION=v1.0.0` to set version) |
+| `make test` | Run tests without root (~81% coverage) |
+| `make test-root` | Run all tests with root privileges (~91% coverage) |
+| `make coverage` | Generate coverage report (without root) |
+| `make coverage-root` | Generate coverage report with root (recommended) |
+| `make lint` | Run golangci-lint |
+| `make clean` | Clean build artifacts |
+| `make run` | Build and run (requires root) |
+| `make deps` | Download and verify dependencies |
+| `make help` | Show all available targets |
+
+**Examples**:
 
 ```bash
-# Build
-make build
+# Build with a specific version
+make build VERSION=v1.0.0
 
-# Run tests (without root - some will skip)
-make test
+# Run full test suite with coverage
+sudo make coverage-root
 
-# Run with coverage (use sudo if needed)
-sudo make coverage
-
-# Run linter
-make lint
-
-# Clean build artifacts
-make clean
-
-# Build and run
-sudo make run
+# Clean and rebuild
+make clean build
 ```
 
 ## How It Works
@@ -372,7 +405,7 @@ The `PacketSender` interface defines the contract for UDP packet senders:
 
 ```go
 type PacketSender interface {
-    Send(message string, srcHost string, srcPort string, destHost string, destPort string) (int, error)
+    Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error)
     Close() error
 }
 ```
@@ -413,11 +446,11 @@ The sender is designed to work with the binary protocol for streaming packets. E
 ```go
 // Send with source and destination specified per packet
 n, err := sender.Send(
-    "Hello, UDP!",    // message
-    "10.0.0.50",      // source host (spoofed)
-    "12345",          // source port (spoofed)
-    "192.168.1.100",  // destination host
-    "514",            // destination port
+    "Hello, UDP!",          // message
+    net.ParseIP("10.0.0.50"),      // source IP (spoofed)
+    12345,                  // source port (spoofed)
+    net.ParseIP("192.168.1.100"),  // destination IP
+    514,                    // destination port
 )
 if err != nil {
     log.Fatal(err)
@@ -429,9 +462,9 @@ fmt.Printf("Sent %d bytes\n", n)
 
 ```go
 // Change source AND destination for each packet
-sender.Send("Packet 1", "10.0.0.1", "5001", "192.168.1.100", "514")
-sender.Send("Packet 2", "10.0.0.2", "5002", "192.168.1.101", "514")
-sender.Send("Packet 3", "10.0.0.3", "5003", "192.168.1.102", "8080")
+sender.Send("Packet 1", net.ParseIP("10.0.0.1"), 5001, net.ParseIP("192.168.1.100"), 514)
+sender.Send("Packet 2", net.ParseIP("10.0.0.2"), 5002, net.ParseIP("192.168.1.101"), 514)
+sender.Send("Packet 3", net.ParseIP("10.0.0.3"), 5003, net.ParseIP("192.168.1.102"), 8080)
 ```
 
 #### Closing the Connection
@@ -447,20 +480,20 @@ if err != nil {
 
 ```go
 // Function that accepts any PacketSender implementation
-func sendPacket(ps PacketSender, message, srcHost, srcPort, destHost, destPort string) error {
-    n, err := ps.Send(message, srcHost, srcPort, destHost, destPort)
+func sendPacket(ps PacketSender, message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) error {
+    n, err := ps.Send(message, srcIP, srcPort, destIP, destPort)
     if err != nil {
         return err
     }
-    fmt.Printf("Sent %d bytes from %s:%s to %s:%s\n",
-        n, srcHost, srcPort, destHost, destPort)
+    fmt.Printf("Sent %d bytes from %s:%d to %s:%d\n",
+        n, srcIP, srcPort, destIP, destPort)
     return nil
 }
 
 // Usage
 sender, _ := NewUDPSender()
 defer sender.Close()
-sendPacket(sender, "Hello, World!", "10.0.0.1", "12345", "192.168.1.100", "514")
+sendPacket(sender, "Hello, World!", net.ParseIP("10.0.0.1"), 12345, net.ParseIP("192.168.1.100"), 514)
 ```
 
 ## Security Considerations
@@ -579,32 +612,69 @@ For full testing, run locally with sudo.
 .
 ├── .github/
 │   └── workflows/
-│       └── ci.yml          # GitHub Actions workflow
-├── .gitignore              # Git ignore rules
-├── .golangci.yml           # Linter configuration
-├── DESIGN.md               # Class design documentation
-├── PROTOCOL.md             # Binary stream protocol specification
-├── go.mod                  # Go module definition
-├── main.go                 # Application entry point and CLI
-├── sender.go               # UDPSender class and interface
-├── packet.go               # Packet construction (IP/UDP headers, checksums)
-├── protocol.go             # Stream protocol handling
-├── constants.go            # Shared protocol constants
-├── main_test.go            # Comprehensive test suite
-├── Makefile                # Build automation
-├── packet-generator.go     # Utility to generate binary packet streams
-└── README.md               # This file
+│       ├── ci.yml               # CI workflow (test, build, lint, benchmark)
+│       └── release.yml          # Release automation workflow
+├── .gitignore                   # Git ignore rules
+├── .golangci.yml                # Linter configuration
+├── AUTHORS                      # Project authors and contributors
+├── constants.go                 # Shared protocol constants (magic bytes)
+├── DESIGN.md                    # Class design documentation
+├── Dockerfile                   # Container image definition
+├── examples/
+│   └── logger-demo.go           # Example demonstrating structured logging
+├── go.mod                       # Go module definition
+├── helpers_test.go              # Common test helpers (requireRoot, requireNonRoot)
+├── LICENSE                      # MIT License
+├── logger.go                    # Structured ND-JSON logger
+├── logger_test.go               # Logger tests (100% coverage)
+├── LOGGING.md                   # Logging documentation
+├── main.go                      # Application entry point and CLI
+├── main_test.go                 # CLI and application tests
+├── Makefile                     # Build automation (test, build, lint, coverage)
+├── packet.go                    # Packet construction (IP/UDP headers, checksums)
+├── packet_test.go               # Packet construction tests (100% coverage)
+├── packet-generator.go          # Utility to generate binary packet streams
+├── protocol.go                  # Stream protocol processing and validation
+├── protocol_test.go             # Protocol parsing tests (98.4% coverage)
+├── PROTOCOL.md                  # Binary stream protocol specification
+├── README.md                    # This file
+├── RELEASING.md                 # Release process documentation
+├── scripts/
+│   ├── postinstall.sh           # Post-install script for packages
+│   └── preremove.sh             # Pre-removal script for packages
+├── sender.go                    # UDPSender class and PacketSender interface
+├── sender_test.go               # UDPSender tests (91.7% coverage)
+└── TESTING.md                   # Testing strategy and guidelines
 ```
 
 ### Code Organization
 
 The codebase is organized into focused modules:
 
+**Core Application**:
+
 - **main.go** - Command-line interface and application entry point
 - **sender.go** - Core UDPSender class with PacketSender interface
 - **packet.go** - Low-level packet construction (IPv4/IPv6 headers, UDP headers, checksums)
 - **protocol.go** - Stream protocol processing and validation
 - **constants.go** - Shared protocol constants (magic bytes)
+- **logger.go** - Structured ND-JSON logging implementation
+
+**Testing**:
+
+- **helpers_test.go** - Common test helpers (privilege checking, mocks)
+- **main_test.go** - CLI and application logic tests
+- **sender_test.go** - UDPSender integration and unit tests
+- **packet_test.go** - Packet construction and checksum tests
+- **protocol_test.go** - Protocol parsing and validation tests
+- **logger_test.go** - Logging functionality tests
+
+**Utilities & Documentation**:
+
+- **packet-generator.go** - CLI tool to generate test packet streams
+- **Makefile** - Build automation and common development tasks
+- **Dockerfile** - Container image for isolated execution
+- **DESIGN.md**, **PROTOCOL.md**, **TESTING.md**, **LOGGING.md**, **RELEASING.md** - Documentation
 
 ## Technical Details
 
@@ -613,7 +683,7 @@ The codebase is organized into focused modules:
 | Method | Description | Returns |
 |--------|-------------|---------|
 | `NewUDPSender()` | Constructor - creates new instance | `*UDPSender, error` |
-| `Send(message, srcHost, srcPort, destHost, destPort string)` | Sends a UDP packet with specified source and destination | `int, error` |
+| `Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16)` | Sends a UDP packet with specified source and destination | `int, error` |
 | `Close()` | Closes the raw socket | `error` |
 
 **Key Design**: Both source and destination IP and port are parameters to `Send()`, allowing complete dynamic control per packet.
@@ -691,14 +761,25 @@ git commit -m "perf: reduce memory allocations in packet building"
 
 ### Testing Your Changes
 
+**Using Make (Recommended)**:
+
 ```bash
-# Run all tests
-go test -v ./...
+# Run all tests with full coverage
+sudo make test-root
+
+# Generate and view coverage report
+sudo make coverage-root
+open coverage.html
+```
+
+**Using Go directly**:
+
+```bash
+# Run all tests (requires -count=1 to bypass cache)
+sudo go test -v -count=1 ./...
 
 # Run tests with coverage
-go test -v -race -coverprofile=coverage.out ./...
-
-# View coverage report
+sudo go test -v -race -count=1 -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
 

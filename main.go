@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -10,46 +11,46 @@ import (
 // This can be overridden at build time using: go build -ldflags "-X main.Version=v1.0.0"
 var Version = "dev"
 
-func main() {
+// run contains the core application logic and is testable
+// It returns an error instead of calling os.Exit, making it easier to test
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	// Create a new flag set for testing purposes
+	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	fs.SetOutput(stderr)
+
 	// Define flags
 	var showVersion bool
 	var verbose bool
 
-	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
-	flag.BoolVar(&showVersion, "V", false, "Print version and exit (short)")
-	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging (debug level)")
-	flag.BoolVar(&verbose, "v", false, "Enable verbose logging (debug level, short)")
+	fs.BoolVar(&showVersion, "version", false, "Print version and exit")
+	fs.BoolVar(&showVersion, "V", false, "Print version and exit (short)")
+	fs.BoolVar(&verbose, "verbose", false, "Enable verbose logging (debug level)")
+	fs.BoolVar(&verbose, "v", false, "Enable verbose logging (debug level, short)")
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Send UDP packets with IP/port spoofing using raw sockets.\n")
-		fmt.Fprintf(os.Stderr, "Requires root/administrator privileges (or the CAP_NET_RAW capability).\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		fmt.Fprintf(os.Stderr, "  -h, --help       Show this help message\n")
-		fmt.Fprintf(os.Stderr, "  -V, --version    Print version and exit\n")
-		fmt.Fprintf(os.Stderr, "  -v, --verbose    Enable verbose logging (debug level)\n")
-		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "Reads packets from stdin using a binary protocol (network byte order/big endian).\n")
-		fmt.Fprintf(os.Stderr, "Each packet specifies its own source and destination:\n")
-		fmt.Fprintf(os.Stderr, "  - Magic:          3 bytes (0xC1 0x21 0xB1)\n")
-		fmt.Fprintf(os.Stderr, "  - Version:        1 byte (4 = IPv4, 6 = IPv6)\n")
-		fmt.Fprintf(os.Stderr, "  - Source IP:      4 bytes (IPv4) or 16 bytes (IPv6)\n")
-		fmt.Fprintf(os.Stderr, "  - Dest IP:        4 bytes (IPv4) or 16 bytes (IPv6)\n")
-		fmt.Fprintf(os.Stderr, "  - Source Port:    2 bytes (uint16)\n")
-		fmt.Fprintf(os.Stderr, "  - Dest Port:      2 bytes (uint16)\n")
-		fmt.Fprintf(os.Stderr, "  - Payload Length: 2 bytes (uint16)\n")
-		fmt.Fprintf(os.Stderr, "  - Payload:        N bytes (up to 65535)\n\n")
-		fmt.Fprintf(os.Stderr, "Examples:\n")
-		fmt.Fprintf(os.Stderr, "  cat packets.bin | sudo %s\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  ./packet-generator | sudo %s\n", os.Args[0])
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: %s [OPTIONS]\n\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "Send UDP packets with IP/port spoofing using raw sockets.\n")
+		_, _ = fmt.Fprintf(stderr, "Requires root/administrator privileges (or the CAP_NET_RAW capability).\n\n")
+		_, _ = fmt.Fprintf(stderr, "Options:\n")
+		_, _ = fmt.Fprintf(stderr, "  -h, --help       Show this help message\n")
+		_, _ = fmt.Fprintf(stderr, "  -V, --version    Print version and exit\n")
+		_, _ = fmt.Fprintf(stderr, "  -v, --verbose    Enable verbose logging (debug level)\n")
+		_, _ = fmt.Fprintf(stderr, "\n")
+		_, _ = fmt.Fprintf(stderr, "Reads packets from stdin using a binary protocol.\n")
+		_, _ = fmt.Fprintf(stderr, "See PROTOCOL.md for complete protocol specification.\n\n")
+		_, _ = fmt.Fprintf(stderr, "Examples:\n")
+		_, _ = fmt.Fprintf(stderr, "  cat packets.bin | sudo %s\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "  ./packet-generator | sudo %s\n", args[0])
 	}
 
-	flag.Parse()
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
 
 	// Handle version flag
 	if showVersion {
-		fmt.Printf("udp-sender version %s\n", Version)
-		os.Exit(0)
+		_, _ = fmt.Fprintf(stdout, "udp-sender version %s\n", Version)
+		return nil
 	}
 
 	// Create logger with appropriate level
@@ -63,9 +64,7 @@ func main() {
 	// Create sender (no destination needed - comes from packets)
 	sender, err := NewUDPSender()
 	if err != nil {
-		logger.Fatal("Error creating UDP sender", map[string]any{
-			"error": err.Error(),
-		})
+		return fmt.Errorf("error creating UDP sender: %w", err)
 	}
 	defer func() {
 		if err := sender.Close(); err != nil {
@@ -76,10 +75,17 @@ func main() {
 	}()
 
 	// Process stream from stdin
-	err = processInputStream(logger, sender, os.Stdin)
+	err = processInputStream(logger, sender, stdin)
 	if err != nil {
-		logger.Fatal("Error processing stream", map[string]any{
-			"error": err.Error(),
-		})
+		return fmt.Errorf("error processing stream: %w", err)
+	}
+
+	return nil
+}
+
+func main() {
+	if err := run(os.Args, os.Stdin, os.Stdout, os.Stderr); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 }
