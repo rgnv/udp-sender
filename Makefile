@@ -35,9 +35,15 @@ coverage-root:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
-# Run linter
+# Run linter (installs golangci-lint v1 if not present)
 lint:
-	golangci-lint run
+	@GOLANGCI_LINT=$$(command -v golangci-lint 2>/dev/null || echo "$$(go env GOPATH)/bin/golangci-lint"); \
+	if [ ! -x "$$GOLANGCI_LINT" ]; then \
+		echo "golangci-lint not found. Installing v1.62.2..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.62.2; \
+		GOLANGCI_LINT="$$(go env GOPATH)/bin/golangci-lint"; \
+	fi; \
+	$$GOLANGCI_LINT run
 
 # Clean build artifacts
 clean:
@@ -63,7 +69,7 @@ help:
 	@echo "  test-root      - Run all tests with root privileges (bypasses cache)"
 	@echo "  coverage       - Run tests with coverage report"
 	@echo "  coverage-root  - Run tests with coverage as root (includes raw socket tests)"
-	@echo "  lint           - Run linter"
+	@echo "  lint           - Run golangci-lint (auto-installs if not present)"
 	@echo "  clean          - Clean build artifacts"
 	@echo "  run            - Build and run the application (requires root)"
 	@echo "  deps           - Download and verify dependencies"

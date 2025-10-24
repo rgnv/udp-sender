@@ -28,19 +28,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs.BoolVar(&verbose, "v", false, "Enable verbose logging (debug level, short)")
 
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: %s [OPTIONS]\n\n", args[0])
-		fmt.Fprintf(stderr, "Send UDP packets with IP/port spoofing using raw sockets.\n")
-		fmt.Fprintf(stderr, "Requires root/administrator privileges (or the CAP_NET_RAW capability).\n\n")
-		fmt.Fprintf(stderr, "Options:\n")
-		fmt.Fprintf(stderr, "  -h, --help       Show this help message\n")
-		fmt.Fprintf(stderr, "  -V, --version    Print version and exit\n")
-		fmt.Fprintf(stderr, "  -v, --verbose    Enable verbose logging (debug level)\n")
-		fmt.Fprintf(stderr, "\n")
-		fmt.Fprintf(stderr, "Reads packets from stdin using a binary protocol.\n")
-		fmt.Fprintf(stderr, "See PROTOCOL.md for complete protocol specification.\n\n")
-		fmt.Fprintf(stderr, "Examples:\n")
-		fmt.Fprintf(stderr, "  cat packets.bin | sudo %s\n", args[0])
-		fmt.Fprintf(stderr, "  ./packet-generator | sudo %s\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "Usage: %s [OPTIONS]\n\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "Send UDP packets with IP/port spoofing using raw sockets.\n")
+		_, _ = fmt.Fprintf(stderr, "Requires root/administrator privileges (or the CAP_NET_RAW capability).\n\n")
+		_, _ = fmt.Fprintf(stderr, "Options:\n")
+		_, _ = fmt.Fprintf(stderr, "  -h, --help       Show this help message\n")
+		_, _ = fmt.Fprintf(stderr, "  -V, --version    Print version and exit\n")
+		_, _ = fmt.Fprintf(stderr, "  -v, --verbose    Enable verbose logging (debug level)\n")
+		_, _ = fmt.Fprintf(stderr, "\n")
+		_, _ = fmt.Fprintf(stderr, "Reads packets from stdin using a binary protocol.\n")
+		_, _ = fmt.Fprintf(stderr, "See PROTOCOL.md for complete protocol specification.\n\n")
+		_, _ = fmt.Fprintf(stderr, "Examples:\n")
+		_, _ = fmt.Fprintf(stderr, "  cat packets.bin | sudo %s\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "  ./packet-generator | sudo %s\n", args[0])
 	}
 
 	if err := fs.Parse(args[1:]); err != nil {
@@ -49,7 +49,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 	// Handle version flag
 	if showVersion {
-		fmt.Fprintf(stdout, "udp-sender version %s\n", Version)
+		_, _ = fmt.Fprintf(stdout, "udp-sender version %s\n", Version)
 		return nil
 	}
 
@@ -85,7 +85,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 func main() {
 	if err := run(os.Args, os.Stdin, os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
