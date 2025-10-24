@@ -41,15 +41,19 @@ Install using DEB or RPM packages for easier system integration and management:
 ```bash
 # Debian/Ubuntu
 VERSION=v1.0.0  # Replace with latest version
-wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender_${VERSION#v}_amd64.deb
-wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender_${VERSION#v}_amd64.deb.sha256
+wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-amd64.deb
+wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-amd64.deb.sha256
 
 # Verify checksum
-sha256sum -c udp-sender_${VERSION#v}_amd64.deb.sha256
+sha256sum -c udp-sender-${VERSION#v}-amd64.deb.sha256
 
 # Install package
-sudo dpkg -i udp-sender_${VERSION#v}_amd64.deb
+sudo dpkg -i udp-sender-${VERSION#v}-amd64.deb
+```
 
+or
+
+```bash
 # RHEL/CentOS/Fedora
 wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-1.x86_64.rpm
 wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-1.x86_64.rpm.sha256
@@ -59,7 +63,11 @@ sha256sum -c udp-sender-${VERSION#v}-1.x86_64.rpm.sha256
 
 # Install package
 sudo rpm -i udp-sender-${VERSION#v}-1.x86_64.rpm
+```
 
+then
+
+```bash
 # Add yourself to the udp-senders group
 sudo usermod -a -G udp-senders $USER
 newgrp udp-senders  # Or log out and back in
