@@ -68,11 +68,11 @@ func buildPacketBytes(version byte, srcIP net.IP, destIP net.IP, srcPort, destPo
 	}
 
 	// Ports
-	binary.Write(buf, binary.BigEndian, srcPort)
-	binary.Write(buf, binary.BigEndian, destPort)
+	_ = binary.Write(buf, binary.BigEndian, srcPort)
+	_ = binary.Write(buf, binary.BigEndian, destPort)
 
 	// Payload length
-	binary.Write(buf, binary.BigEndian, uint16(len(payload)))
+	_ = binary.Write(buf, binary.BigEndian, uint16(len(payload)))
 
 	// Payload
 	buf.Write(payload)
@@ -432,8 +432,8 @@ func TestProcessInputStream_IncompleteStream_DestPort(t *testing.T) {
 	buf.WriteByte(4)
 	buf.Write(srcIP)
 	buf.Write(destIP)
-	binary.Write(buf, binary.BigEndian, uint16(12345)) // Source port
-	buf.WriteByte(0x12)                                // Only 1 byte of dest port
+	_ = binary.Write(buf, binary.BigEndian, uint16(12345)) // Source port
+	buf.WriteByte(0x12)                                    // Only 1 byte of dest port
 
 	var logBuf bytes.Buffer
 	logger := &Logger{output: &logBuf, minLevel: LogLevelDebug}
@@ -460,8 +460,8 @@ func TestProcessInputStream_IncompleteStream_PayloadLength(t *testing.T) {
 	buf.WriteByte(4)
 	buf.Write(srcIP)
 	buf.Write(destIP)
-	binary.Write(buf, binary.BigEndian, uint16(12345))
-	binary.Write(buf, binary.BigEndian, uint16(8080))
+	_ = binary.Write(buf, binary.BigEndian, uint16(12345))
+	_ = binary.Write(buf, binary.BigEndian, uint16(8080))
 	buf.WriteByte(0x00) // Only 1 byte of payload length
 
 	var logBuf bytes.Buffer
@@ -489,10 +489,10 @@ func TestProcessInputStream_IncompleteStream_Payload(t *testing.T) {
 	buf.WriteByte(4)
 	buf.Write(srcIP)
 	buf.Write(destIP)
-	binary.Write(buf, binary.BigEndian, uint16(12345))
-	binary.Write(buf, binary.BigEndian, uint16(8080))
-	binary.Write(buf, binary.BigEndian, uint16(100)) // Payload length = 100
-	buf.Write([]byte("only 10 bytes"))               // Less than declared
+	_ = binary.Write(buf, binary.BigEndian, uint16(12345))
+	_ = binary.Write(buf, binary.BigEndian, uint16(8080))
+	_ = binary.Write(buf, binary.BigEndian, uint16(100)) // Payload length = 100
+	buf.Write([]byte("only 10 bytes"))                   // Less than declared
 
 	var logBuf bytes.Buffer
 	logger := &Logger{output: &logBuf, minLevel: LogLevelDebug}

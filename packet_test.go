@@ -284,13 +284,8 @@ func TestCalculateUDPChecksum_NoRoot(t *testing.T) {
 			checksum := sender.calculateUDPChecksum(tt.udpHeader, tt.payload, tt.srcIP, tt.destIP, tt.isIPv6)
 
 			// Checksum should be calculated (we can't predict exact value without implementing the algorithm here)
-			// Just verify it returns a value
+			// Just verify it returns a value (uint16 is always valid, 0-0xFFFF)
 			_ = checksum
-
-			// Verify it's a valid 16-bit value
-			if checksum > 0xFFFF {
-				t.Errorf("Checksum = 0x%x exceeds 16-bit value", checksum)
-			}
 		})
 	}
 }
