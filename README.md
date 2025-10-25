@@ -200,6 +200,7 @@ Options:
 The application reads packets from stdin using the binary protocol format. Each packet specifies its own source and destination IP address and port.
 
 **MTU Configuration**:
+
 - Default: 1500 bytes (standard Ethernet)
 - Range: 576-9000 bytes
 - Affects maximum payload sizes for IPv4 and IPv6 packets
@@ -606,6 +607,7 @@ sudo tcpdump -i any -n udp port 8080 -v
 **Cause**: Packet payloads exceed the Maximum Transmission Unit.
 
 With the default MTU of 1500 bytes:
+
 - IPv4: Maximum 1472 bytes (1500 - 20 - 8)
 - IPv6: Maximum 1452 bytes (1500 - 40 - 8)
 
@@ -637,7 +639,7 @@ With the default MTU of 1500 bytes:
    }
    ```
 
-3. **Monitor error logs** for specific packets that were dropped:
+4. **Monitor error logs** for specific packets that were dropped:
 
    ```bash
    # Filter for MTU errors
