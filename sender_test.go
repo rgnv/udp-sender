@@ -212,7 +212,7 @@ func TestUDPSender_Send_ErrorCases(t *testing.T) {
 }
 
 func TestUDPSender_Send_IPv6(t *testing.T) {
-	requireRoot(t)
+	requireIPv6(t)
 
 	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
@@ -226,9 +226,8 @@ func TestUDPSender_Send_IPv6(t *testing.T) {
 	message := "IPv6 test"
 
 	n, err := sender.Send(message, srcIP, 12345, destIP, 53)
-	// May fail on macOS or if IPv6 is not available, but code path is tested
 	if err != nil {
-		t.Logf("IPv6 Send() error (may be expected): %v", err)
+		t.Logf("IPv6 Send() error (may be expected on some networks): %v", err)
 	} else if n != len(message) {
 		t.Errorf("Send() sent %d bytes, want %d", n, len(message))
 	}
@@ -482,10 +481,18 @@ func TestUDPSender_MTUValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Determine if this is an IPv6 test
+			srcIP := net.ParseIP(tt.srcIP)
+			isIPv6 := srcIP.To4() == nil
+
+			// Skip IPv6 tests if IPv6 is not available
+			if isIPv6 && !hasIPv6() {
+				t.Skip("IPv6 is not available on this system")
+			}
+
 			// Create payload of specified size
 			payload := strings.Repeat("X", tt.payloadSize)
 
-			srcIP := net.ParseIP(tt.srcIP)
 			destIP := net.ParseIP(tt.destIP)
 
 			_, err := sender.Send(payload, srcIP, 12345, destIP, 54321)
