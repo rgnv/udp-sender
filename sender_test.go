@@ -13,7 +13,7 @@ import (
 func TestNewUDPSender(t *testing.T) {
 	requireRoot(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("NewUDPSender() error = %v", err)
 	}
@@ -34,7 +34,7 @@ func TestNewUDPSender(t *testing.T) {
 func TestUDPSender_Send(t *testing.T) {
 	requireRoot(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestUDPSender_Send(t *testing.T) {
 func TestUDPSender_Close(t *testing.T) {
 	requireRoot(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestPacketSender_Interface(t *testing.T) {
 
 	// Test that UDPSender implements PacketSender interface
 	var sender PacketSender
-	udpSender, err := NewUDPSender()
+	udpSender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestPacketSender_Interface(t *testing.T) {
 func TestUDPSender_Send_ErrorCases(t *testing.T) {
 	requireRoot(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
@@ -212,9 +212,9 @@ func TestUDPSender_Send_ErrorCases(t *testing.T) {
 }
 
 func TestUDPSender_Send_IPv6(t *testing.T) {
-	requireRoot(t)
+	requireIPv6(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
@@ -226,9 +226,8 @@ func TestUDPSender_Send_IPv6(t *testing.T) {
 	message := "IPv6 test"
 
 	n, err := sender.Send(message, srcIP, 12345, destIP, 53)
-	// May fail on macOS or if IPv6 is not available, but code path is tested
 	if err != nil {
-		t.Logf("IPv6 Send() error (may be expected): %v", err)
+		t.Logf("IPv6 Send() error (may be expected on some networks): %v", err)
 	} else if n != len(message) {
 		t.Errorf("Send() sent %d bytes, want %d", n, len(message))
 	}
@@ -237,7 +236,7 @@ func TestUDPSender_Send_IPv6(t *testing.T) {
 func TestUDPSender_Close_ErrorHandling(t *testing.T) {
 	requireRoot(t)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		t.Fatalf("Failed to create sender: %v", err)
 	}
@@ -297,7 +296,7 @@ func BenchmarkUDPSender_Send(b *testing.B) {
 	serverAddr := conn.LocalAddr().(*net.UDPAddr)
 
 	// Create sender
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		b.Fatalf("Failed to create sender: %v", err)
 	}
@@ -354,7 +353,7 @@ func BenchmarkUDPSender_SendVariablePayloadSizes(b *testing.B) {
 
 	serverAddr := conn.LocalAddr().(*net.UDPAddr)
 
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
 	if err != nil {
 		b.Fatalf("Failed to create sender: %v", err)
 	}
@@ -390,6 +389,134 @@ func BenchmarkUDPSender_SendVariablePayloadSizes(b *testing.B) {
 				_, err := sender.Send(payload, loopbackIP, srcPort, loopbackIP, uint16(serverAddr.Port))
 				if err != nil {
 					b.Errorf("Send() error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestUDPSender_MTUValidation tests that packets exceeding MTU limits are rejected
+func TestUDPSender_MTUValidation(t *testing.T) {
+	requireRoot(t)
+
+	sender, err := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
+	if err != nil {
+		t.Fatalf("Failed to create sender: %v", err)
+	}
+	defer func() { _ = sender.Close() }()
+
+	tests := []struct {
+		name        string
+		payloadSize int
+		srcIP       string
+		destIP      string
+		expectError bool
+		description string
+	}{
+		{
+			name:        "IPv4 within MTU limit",
+			payloadSize: 1472,
+			srcIP:       "192.168.1.1",
+			destIP:      "192.168.1.2",
+			expectError: false,
+			description: "Payload exactly at IPv4 MTU limit should succeed",
+		},
+		{
+			name:        "IPv4 exceeds MTU limit",
+			payloadSize: 1473,
+			srcIP:       "192.168.1.1",
+			destIP:      "192.168.1.2",
+			expectError: true,
+			description: "Payload exceeding IPv4 MTU limit should fail",
+		},
+		{
+			name:        "IPv4 small payload",
+			payloadSize: 100,
+			srcIP:       "192.168.1.1",
+			destIP:      "192.168.1.2",
+			expectError: false,
+			description: "Small payload should succeed",
+		},
+		{
+			name:        "IPv4 way over MTU",
+			payloadSize: 5000,
+			srcIP:       "192.168.1.1",
+			destIP:      "192.168.1.2",
+			expectError: true,
+			description: "Large payload way over MTU should fail",
+		},
+		{
+			name:        "IPv6 within MTU limit",
+			payloadSize: 1452,
+			srcIP:       "2001:db8::1",
+			destIP:      "2001:db8::2",
+			expectError: false,
+			description: "Payload exactly at IPv6 MTU limit should succeed",
+		},
+		{
+			name:        "IPv6 exceeds MTU limit",
+			payloadSize: 1453,
+			srcIP:       "2001:db8::1",
+			destIP:      "2001:db8::2",
+			expectError: true,
+			description: "Payload exceeding IPv6 MTU limit should fail",
+		},
+		{
+			name:        "IPv6 small payload",
+			payloadSize: 100,
+			srcIP:       "2001:db8::1",
+			destIP:      "2001:db8::2",
+			expectError: false,
+			description: "Small IPv6 payload should succeed",
+		},
+		{
+			name:        "IPv6 way over MTU",
+			payloadSize: 5000,
+			srcIP:       "2001:db8::1",
+			destIP:      "2001:db8::2",
+			expectError: true,
+			description: "Large IPv6 payload way over MTU should fail",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Determine if this is an IPv6 test
+			srcIP := net.ParseIP(tt.srcIP)
+			isIPv6 := srcIP.To4() == nil
+
+			// Skip IPv6 tests if IPv6 is not available
+			if isIPv6 && !hasIPv6() {
+				t.Skip("IPv6 is not available on this system")
+			}
+
+			// Create payload of specified size
+			payload := strings.Repeat("X", tt.payloadSize)
+
+			destIP := net.ParseIP(tt.destIP)
+
+			_, err := sender.Send(payload, srcIP, 12345, destIP, 54321)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("%s: expected error but got none", tt.description)
+				} else if !strings.Contains(err.Error(), "exceeds MTU limit") {
+					t.Errorf("%s: expected MTU error but got: %v", tt.description, err)
+				} else {
+					t.Logf("%s: correctly rejected with error: %v", tt.description, err)
+				}
+			} else {
+				if err != nil {
+					// For IPv6, network/routing errors are acceptable (may not have routable IPv6)
+					if isIPv6 && (strings.Contains(err.Error(), "no route to host") ||
+						strings.Contains(err.Error(), "network is unreachable") ||
+						strings.Contains(err.Error(), "failed to send")) {
+						t.Logf("%s: IPv6 Send() routing error (expected on systems without full IPv6): %v", tt.description, err)
+					} else {
+						t.Errorf("%s: unexpected error: %v", tt.description, err)
+					}
+				} else {
+					t.Logf("%s: correctly accepted", tt.description)
 				}
 			}
 		})

@@ -17,8 +17,10 @@ type PacketSender interface {
 // IP and port are specified per-packet in the Send() method.
 // Supports both IPv4 and IPv6.
 type UDPSender struct {
-	fdIPv4 int
-	fdIPv6 int
+	fdIPv4         int
+	fdIPv6         int
+	maxPayloadIPv4 int
+	maxPayloadIPv6 int
 }
 
 // Ensure UDPSender implements PacketSender interface at compile time
@@ -28,10 +30,13 @@ var _ PacketSender = (*UDPSender)(nil)
 // Both source and destination IP and port are specified per-packet in the Send() method
 // Requires root/admin privileges to create raw sockets
 // Supports both IPv4 and IPv6
-func NewUDPSender() (*UDPSender, error) {
+// maxPayloadIPv4 and maxPayloadIPv6 specify the maximum payload sizes based on MTU
+func NewUDPSender(maxPayloadIPv4, maxPayloadIPv6 int) (*UDPSender, error) {
 	sender := &UDPSender{
-		fdIPv4: -1,
-		fdIPv6: -1,
+		fdIPv4:         -1,
+		fdIPv6:         -1,
+		maxPayloadIPv4: maxPayloadIPv4,
+		maxPayloadIPv6: maxPayloadIPv6,
 	}
 
 	// Create IPv4 socket
@@ -82,9 +87,23 @@ func (s *UDPSender) Send(message string, srcIP net.IP, srcPort uint16, destIP ne
 	// Determine IP versions
 	srcIPv4 := srcIP.To4()
 	destIPv4 := destIP.To4()
+	isSrcIPv4 := srcIPv4 != nil
+	isDestIPv4 := destIPv4 != nil
+
+	// Validate payload size against MTU limits
+	maxPayload := s.maxPayloadIPv4
+	ipVersion := "IPv4"
+	if !isSrcIPv4 {
+		maxPayload = s.maxPayloadIPv6
+		ipVersion = "IPv6"
+	}
+
+	if len(payload) > maxPayload {
+		return 0, fmt.Errorf("payload size %d exceeds MTU limit for %s (%d bytes)", len(payload), ipVersion, maxPayload)
+	}
 
 	// Check if both are IPv4
-	if srcIPv4 != nil && destIPv4 != nil {
+	if isSrcIPv4 && isDestIPv4 {
 		// Use IPv4
 		packet := s.buildPacket(payload, srcIPv4, srcPort, destIPv4, destPort)
 
@@ -102,7 +121,7 @@ func (s *UDPSender) Send(message string, srcIP net.IP, srcPort uint16, destIP ne
 	}
 
 	// Check if both are IPv6
-	if srcIPv4 == nil && destIPv4 == nil {
+	if !isSrcIPv4 && !isDestIPv4 {
 		// Use IPv6
 		packet := s.buildPacket(payload, srcIP, srcPort, destIP, destPort)
 

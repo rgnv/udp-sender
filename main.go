@@ -21,11 +21,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// Define flags
 	var showVersion bool
 	var verbose bool
+	var mtu int
 
 	fs.BoolVar(&showVersion, "version", false, "Print version and exit")
 	fs.BoolVar(&showVersion, "V", false, "Print version and exit (short)")
 	fs.BoolVar(&verbose, "verbose", false, "Enable verbose logging (debug level)")
 	fs.BoolVar(&verbose, "v", false, "Enable verbose logging (debug level, short)")
+	fs.IntVar(&mtu, "mtu", DefaultMTU, "Maximum Transmission Unit in bytes (default: 1500)")
+	fs.IntVar(&mtu, "m", DefaultMTU, "Maximum Transmission Unit in bytes (default: 1500, short)")
 
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage: %s [OPTIONS]\n\n", args[0])
@@ -35,12 +38,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		_, _ = fmt.Fprintf(stderr, "  -h, --help       Show this help message\n")
 		_, _ = fmt.Fprintf(stderr, "  -V, --version    Print version and exit\n")
 		_, _ = fmt.Fprintf(stderr, "  -v, --verbose    Enable verbose logging (debug level)\n")
+		_, _ = fmt.Fprintf(stderr, "  -m, --mtu <bytes> Maximum Transmission Unit (default: 1500)\n")
 		_, _ = fmt.Fprintf(stderr, "\n")
 		_, _ = fmt.Fprintf(stderr, "Reads packets from stdin using a binary protocol.\n")
 		_, _ = fmt.Fprintf(stderr, "See PROTOCOL.md for complete protocol specification.\n\n")
 		_, _ = fmt.Fprintf(stderr, "Examples:\n")
 		_, _ = fmt.Fprintf(stderr, "  cat packets.bin | sudo %s\n", args[0])
 		_, _ = fmt.Fprintf(stderr, "  ./packet-generator | sudo %s\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "  ./packet-generator | sudo %s -m 9000\n", args[0])
 	}
 
 	if err := fs.Parse(args[1:]); err != nil {
@@ -53,6 +58,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return nil
 	}
 
+	// Validate MTU
+	if mtu < MinMTU || mtu > MaxMTU {
+		return fmt.Errorf("MTU must be between %d and %d bytes (got %d)", MinMTU, MaxMTU, mtu)
+	}
+
 	// Create logger with appropriate level
 	var logger *Logger
 	if verbose {
@@ -61,8 +71,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		logger = NewLogger()
 	}
 
+	// Calculate max payload sizes based on MTU
+	// IPv4: MTU - 20 (IP header) - 8 (UDP header)
+	// IPv6: MTU - 40 (IPv6 header) - 8 (UDP header)
+	maxPayloadIPv4 := mtu - IPv4HeaderSize - UDPHeaderSize
+	maxPayloadIPv6 := mtu - IPv6HeaderSize - UDPHeaderSize
+
+	logger.Debug("MTU configuration", map[string]any{
+		"mtu":              mtu,
+		"max_payload_ipv4": maxPayloadIPv4,
+		"max_payload_ipv6": maxPayloadIPv6,
+	})
+
 	// Create sender (no destination needed - comes from packets)
-	sender, err := NewUDPSender()
+	sender, err := NewUDPSender(maxPayloadIPv4, maxPayloadIPv6)
 	if err != nil {
 		return fmt.Errorf("error creating UDP sender: %w", err)
 	}

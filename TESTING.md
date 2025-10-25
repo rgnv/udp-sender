@@ -9,6 +9,8 @@ This project uses a hybrid testing approach to enable comprehensive testing both
 - **`helpers_test.go`** - Common test helpers
   - `requireRoot()` - Checks for root privileges and respects `-short` flag
   - `requireNonRoot()` - Ensures tests run without root (for negative tests)
+  - `hasIPv6()` - Detects if IPv6 is available and routable on the system
+  - `requireIPv6()` - Skips tests if IPv6 is not available (combines root check + IPv6 check)
   
 - **`logger_test.go`** - Logger tests (100% coverage)
   - Output format validation
@@ -184,6 +186,166 @@ If you need full packet delivery testing on macOS:
 1. Use Linux in a VM or container
 2. Use the CI pipeline (runs on Linux)
 3. Test against external IPs (not localhost) - may work but is unreliable
+
+### IPv6 Testing Limitations
+
+IPv6 testing presents unique challenges across different environments:
+
+#### The Challenge
+
+IPv6 availability varies significantly across systems:
+
+- **Some systems**: No IPv6 support at all (socket creation fails)
+- **Some systems**: IPv6 sockets work, but routing is limited/unavailable
+- **Some systems**: Full IPv6 support with working routes
+- **CI environments**: Often have IPv6 disabled or partially configured
+
+#### Our Solution: Multi-Layered Approach
+
+We use a hybrid approach to maximize test coverage while handling all scenarios gracefully:
+
+**1. IPv6 Availability Detection** (`hasIPv6()` helper):
+
+```go
+func hasIPv6() bool {
+    // Try to create an IPv6 raw socket
+    fd, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+    if err != nil {
+        return false  // IPv6 not available at all
+    }
+    defer syscall.Close(fd)
+    
+    // Try to send a test packet to ::1 (localhost)
+    sender, _ := NewUDPSender(MaxPayloadIPv4, MaxPayloadIPv6)
+    _, err = sender.Send("test", net.ParseIP("::1"), 12345, net.ParseIP("::1"), 54321)
+    
+    return err == nil  // Only return true if routing actually works
+}
+```
+
+**2. Test Skipping** - When IPv6 is completely unavailable:
+
+```go
+func requireIPv6(t *testing.T) {
+    requireRoot(t)  // IPv6 raw sockets need root
+    
+    if !hasIPv6() {
+        t.Skip("IPv6 is not available on this system")
+    }
+}
+```
+
+**3. Graceful Error Handling** - When IPv6 is partially available:
+
+For tests that expect success but encounter IPv6 routing errors:
+
+```go
+if err != nil {
+    // IPv6 routing errors are acceptable (may not have full IPv6)
+    if isIPv6 && (strings.Contains(err.Error(), "no route to host") || 
+                  strings.Contains(err.Error(), "network is unreachable")) {
+        t.Logf("IPv6 routing error (expected on systems without full IPv6): %v", err)
+        return  // Log but don't fail
+    }
+    t.Errorf("Unexpected error: %v", err)
+}
+```
+
+#### Test Behavior by Environment
+
+| Environment | Behavior | Result |
+|-------------|----------|--------|
+| **No IPv6 support** | Tests skipped with message | `--- SKIP: IPv6 is not available` |
+| **Partial IPv6** (socket works, no routes) | Tests run, routing errors logged | `--- PASS: ... (routing error logged)` |
+| **Full IPv6** | Tests run normally | `--- PASS: ... correctly accepted` |
+
+#### What Gets Tested
+
+✅ **Always tested** (when IPv6 available):
+
+- IPv6 packet construction
+- IPv6 header building
+- IPv6 checksum calculation
+- **MTU validation for IPv6** (1452 byte limit)
+- Error handling for oversized IPv6 packets
+
+⚠️ **Best effort** (logs errors but doesn't fail):
+
+- IPv6 packet delivery to non-localhost addresses
+- IPv6 routing to documentation addresses (2001:db8::/32)
+
+❌ **Skipped** (when IPv6 unavailable):
+
+- All IPv6 tests when socket creation fails
+
+#### Example Test Output
+
+**System without IPv6:**
+
+```text
+=== RUN   TestUDPSender_Send_IPv6
+--- SKIP: TestUDPSender_Send_IPv6 (0.00s)
+    helpers_test.go:64: IPv6 is not available on this system
+```
+
+**System with partial IPv6 (common in CI):**
+
+```text
+=== RUN   TestUDPSender_MTUValidation/IPv6_small_payload
+--- PASS: TestUDPSender_MTUValidation/IPv6_small_payload (0.00s)
+    sender_test.go:514: Small IPv6 payload should succeed: 
+        IPv6 routing error (expected on systems without full IPv6): 
+        failed to send packet to 2001:db8::2: no route to host
+```
+
+**System with full IPv6:**
+
+```text
+=== RUN   TestUDPSender_MTUValidation/IPv6_small_payload
+--- PASS: TestUDPSender_MTUValidation/IPv6_small_payload (0.00s)
+    sender_test.go:519: Small IPv6 payload should succeed: correctly accepted
+```
+
+#### Why This Approach?
+
+1. **CI-friendly**: Tests don't fail in environments without IPv6
+2. **Still validates code**: Even with routing errors, the code paths are tested
+3. **MTU validation works**: The important MTU limit checks work regardless of routing
+4. **Clear feedback**: Skip and log messages explain what's happening
+5. **Robust**: Handles all possible IPv6 availability scenarios
+
+#### Best Practices for IPv6 Tests
+
+When writing tests that use IPv6:
+
+1. **Use `requireIPv6()`** for tests that need full IPv6:
+
+   ```go
+   func TestMyIPv6Feature(t *testing.T) {
+       requireIPv6(t)  // Will skip if IPv6 unavailable
+       // ... test code ...
+   }
+   ```
+
+2. **Allow routing errors** for non-critical delivery tests:
+
+   ```go
+   _, err := sender.Send(payload, srcIPv6, port, destIPv6, port)
+   if err != nil && strings.Contains(err.Error(), "no route to host") {
+       t.Logf("IPv6 routing error (acceptable): %v", err)
+       return
+   }
+   ```
+
+3. **Always test MTU validation** - these should never skip:
+
+   ```go
+   // MTU validation should fail regardless of routing
+   _, err := sender.Send(tooLargePayload, srcIPv6, port, destIPv6, port)
+   if !strings.Contains(err.Error(), "exceeds MTU limit") {
+       t.Errorf("Expected MTU error, got: %v", err)
+   }
+   ```
 
 ### Go Test Cache
 

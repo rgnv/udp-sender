@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 )
 
 // processInputStream reads packets from stdin using the binary protocol.
@@ -13,6 +14,7 @@ import (
 func processInputStream(logger *Logger, sender PacketSender, input io.Reader) error {
 	reader := bufio.NewReader(input)
 	packetCount := 0
+	packetsDropped := 0
 	bytesSent := uint64(0)
 
 	for {
@@ -22,8 +24,9 @@ func processInputStream(logger *Logger, sender PacketSender, input io.Reader) er
 		if err == io.EOF {
 			// End of stream
 			logger.Info("Stream complete", map[string]any{
-				"packets_sent": packetCount,
-				"bytes_sent":   bytesSent,
+				"packets_sent":    packetCount,
+				"packets_dropped": packetsDropped,
+				"bytes_sent":      bytesSent,
 			})
 			return nil
 		}
@@ -117,6 +120,21 @@ func processInputStream(logger *Logger, sender PacketSender, input io.Reader) er
 		// Send the packet
 		n, err = sender.Send(string(payload), srcIP, srcPort, destIP, destPort)
 		if err != nil {
+			// Check if this is an MTU error - if so, log and continue
+			if strings.Contains(err.Error(), "exceeds MTU limit") {
+				logger.Error("Packet dropped due to MTU limit", map[string]any{
+					"packet_number": packetCount + packetsDropped + 1,
+					"payload_size":  len(payload),
+					"source_ip":     srcIP.String(),
+					"source_port":   srcPort,
+					"dest_ip":       destIP.String(),
+					"dest_port":     destPort,
+					"error":         err.Error(),
+				})
+				packetsDropped++
+				continue
+			}
+			// For other errors, terminate processing
 			return fmt.Errorf("sending packet %d: %w", packetCount+1, err)
 		}
 
