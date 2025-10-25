@@ -262,6 +262,7 @@ if err != nil {
 #### What Gets Tested
 
 ✅ **Always tested** (when IPv6 available):
+
 - IPv6 packet construction
 - IPv6 header building
 - IPv6 checksum calculation
@@ -269,23 +270,27 @@ if err != nil {
 - Error handling for oversized IPv6 packets
 
 ⚠️ **Best effort** (logs errors but doesn't fail):
+
 - IPv6 packet delivery to non-localhost addresses
 - IPv6 routing to documentation addresses (2001:db8::/32)
 
 ❌ **Skipped** (when IPv6 unavailable):
+
 - All IPv6 tests when socket creation fails
 
 #### Example Test Output
 
 **System without IPv6:**
-```
+
+```text
 === RUN   TestUDPSender_Send_IPv6
 --- SKIP: TestUDPSender_Send_IPv6 (0.00s)
     helpers_test.go:64: IPv6 is not available on this system
 ```
 
 **System with partial IPv6 (common in CI):**
-```
+
+```text
 === RUN   TestUDPSender_MTUValidation/IPv6_small_payload
 --- PASS: TestUDPSender_MTUValidation/IPv6_small_payload (0.00s)
     sender_test.go:514: Small IPv6 payload should succeed: 
@@ -294,7 +299,8 @@ if err != nil {
 ```
 
 **System with full IPv6:**
-```
+
+```text
 === RUN   TestUDPSender_MTUValidation/IPv6_small_payload
 --- PASS: TestUDPSender_MTUValidation/IPv6_small_payload (0.00s)
     sender_test.go:519: Small IPv6 payload should succeed: correctly accepted
@@ -313,6 +319,7 @@ if err != nil {
 When writing tests that use IPv6:
 
 1. **Use `requireIPv6()`** for tests that need full IPv6:
+
    ```go
    func TestMyIPv6Feature(t *testing.T) {
        requireIPv6(t)  // Will skip if IPv6 unavailable
@@ -321,6 +328,7 @@ When writing tests that use IPv6:
    ```
 
 2. **Allow routing errors** for non-critical delivery tests:
+
    ```go
    _, err := sender.Send(payload, srcIPv6, port, destIPv6, port)
    if err != nil && strings.Contains(err.Error(), "no route to host") {
@@ -330,6 +338,7 @@ When writing tests that use IPv6:
    ```
 
 3. **Always test MTU validation** - these should never skip:
+
    ```go
    // MTU validation should fail regardless of routing
    _, err := sender.Send(tooLargePayload, srcIPv6, port, destIPv6, port)

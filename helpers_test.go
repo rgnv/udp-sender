@@ -31,7 +31,7 @@ func hasIPv6() bool {
 	if err != nil {
 		return false
 	}
-	defer syscall.Close(fd)
+	defer func() { _ = syscall.Close(fd) }()
 
 	// Check if we can parse an IPv6 address
 	ip := net.ParseIP("::1")
@@ -44,7 +44,7 @@ func hasIPv6() bool {
 	if err != nil {
 		return false
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	// Try sending a small test packet to ::1 (localhost)
 	srcIP := net.ParseIP("::1")
