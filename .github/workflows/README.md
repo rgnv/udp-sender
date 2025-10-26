@@ -31,9 +31,9 @@ This directory contains GitHub Actions workflows for CI/CD.
 **Jobs**:
 
 - **Build**: Cross-compiles binaries for:
-  - Linux AMD64 (x86_64)
-  - Linux ARM64 (aarch64)
-  - macOS AMD64 (Intel)
+  - Linux x64
+  - Linux ARM64
+  - macOS x64 (Intel)
   - macOS ARM64 (Apple Silicon)
 - **Archive**: Creates `.tar.gz` archives for each binary
 - **Packages**: Builds DEB and RPM packages for Linux
@@ -43,12 +43,12 @@ This directory contains GitHub Actions workflows for CI/CD.
 
 **Outputs**:
 
-- `udp-sender-v1.0.0-linux-amd64.tar.gz`
+- `udp-sender-v1.0.0-linux-x64.tar.gz`
 - `udp-sender-v1.0.0-linux-arm64.tar.gz`
-- `udp-sender-v1.0.0-darwin-amd64.tar.gz`
+- `udp-sender-v1.0.0-darwin-x64.tar.gz`
 - `udp-sender-v1.0.0-darwin-arm64.tar.gz`
-- `udp-sender_1.0.0_amd64.deb`, `udp-sender_1.0.0_arm64.deb`
-- `udp-sender-1.0.0-1.x86_64.rpm`, `udp-sender-1.0.0-1.aarch64.rpm`
+- `udp-sender_1.0.0_x64.deb`, `udp-sender_1.0.0_arm64.deb`
+- `udp-sender-1.0.0-x64.rpm`, `udp-sender-1.0.0-arm64.rpm`
 - Individual SHA256 checksums (`.sha256`) for each file
 - Combined `checksums.txt`
 - Docker images: `ghcr.io/criblio/udp-sender:1.0.0`, `ghcr.io/criblio/udp-sender:latest`

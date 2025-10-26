@@ -105,14 +105,14 @@ jobs:
         # Create output directory
         mkdir -p dist
         
-        # Build for Linux AMD64
-        GOOS=linux GOARCH=amd64 go build -o dist/udp-sender-linux-amd64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
+        # Build for Linux x64
+        GOOS=linux GOARCH=amd64 go build -o dist/udp-sender-linux-x64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
         
         # Build for Linux ARM64
         GOOS=linux GOARCH=arm64 go build -o dist/udp-sender-linux-arm64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
         
-        # Build for macOS AMD64
-        GOOS=darwin GOARCH=amd64 go build -o dist/udp-sender-darwin-amd64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
+        # Build for macOS x64
+        GOOS=darwin GOARCH=amd64 go build -o dist/udp-sender-darwin-x64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
         
         # Build for macOS ARM64 (Apple Silicon)
         GOOS=darwin GOARCH=arm64 go build -o dist/udp-sender-darwin-arm64 -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" .
@@ -121,17 +121,17 @@ jobs:
       run: |
         cd dist
         
-        # Linux AMD64
-        tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz udp-sender-linux-amd64
-        sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz.sha256
+        # Linux x64
+        tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz udp-sender-linux-x64
+        sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz.sha256
         
         # Linux ARM64
         tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz udp-sender-linux-arm64
         sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz.sha256
         
-        # macOS AMD64
-        tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz udp-sender-darwin-amd64
-        sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz.sha256
+        # macOS x64
+        tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-darwin-x64.tar.gz udp-sender-darwin-x64
+        sha256sum udp-sender-${{ steps.version.outputs.VERSION }}-darwin-x64.tar.gz > udp-sender-${{ steps.version.outputs.VERSION }}-darwin-x64.tar.gz.sha256
         
         # macOS ARM64
         tar -czf udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz udp-sender-darwin-arm64
@@ -155,7 +155,7 @@ jobs:
         # Remove 'v' prefix from version for packages
         PKG_VERSION="${VERSION#v}"
         
-        # Create DEB package for AMD64
+        # Create DEB package for x64
         fpm -s dir -t deb \
           -n udp-sender \
           -v "$PKG_VERSION" \
@@ -167,8 +167,8 @@ jobs:
           --vendor "Cribl, Inc." \
           --after-install ../scripts/postinstall.sh \
           --before-remove ../scripts/preremove.sh \
-          -p "udp-sender-${PKG_VERSION}-amd64.deb" \
-          udp-sender-linux-amd64=/usr/bin/udp-sender
+          -p "udp-sender-${PKG_VERSION}-x64.deb" \
+          udp-sender-linux-x64=/usr/bin/udp-sender
         
         # Create DEB package for ARM64
         fpm -s dir -t deb \
@@ -185,7 +185,7 @@ jobs:
           -p "udp-sender-${PKG_VERSION}-arm64.deb" \
           udp-sender-linux-arm64=/usr/bin/udp-sender
         
-        # Create RPM package for AMD64 (x86_64)
+        # Create RPM package for x64
         fpm -s dir -t rpm \
           -n udp-sender \
           -v "$PKG_VERSION" \
@@ -197,9 +197,10 @@ jobs:
           --vendor "Cribl, Inc." \
           --after-install ../scripts/postinstall.sh \
           --before-remove ../scripts/preremove.sh \
-          udp-sender-linux-amd64=/usr/bin/udp-sender
+          -p "udp-sender-${PKG_VERSION}-x64.rpm" \
+          udp-sender-linux-x64=/usr/bin/udp-sender
         
-        # Create RPM package for ARM64 (aarch64)
+        # Create RPM package for ARM64
         fpm -s dir -t rpm \
           -n udp-sender \
           -v "$PKG_VERSION" \
@@ -211,6 +212,7 @@ jobs:
           --vendor "Cribl, Inc." \
           --after-install ../scripts/postinstall.sh \
           --before-remove ../scripts/preremove.sh \
+          -p "udp-sender-${PKG_VERSION}-arm64.rpm" \
           udp-sender-linux-arm64=/usr/bin/udp-sender
         
         # Generate checksums for packages
@@ -240,19 +242,19 @@ jobs:
         
         | Distribution | Architecture | Package |
         |--------------|--------------|---------|
-        | Debian/Ubuntu | AMD64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-amd64.deb\` |
-        | Debian/Ubuntu | ARM64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-arm64.deb\` |
-        | RHEL/CentOS/Fedora | x86_64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm\` |
-        | RHEL/CentOS/Fedora | aarch64 | \`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.aarch64.rpm\` |
+        | Debian/Ubuntu | x64 | [\`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.deb\`](https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.deb) |
+        | Debian/Ubuntu | ARM64 | [\`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-arm64.deb\`](https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-arm64.deb) |
+        | RHEL/CentOS/Fedora | x64 | [\`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.rpm\`](https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.rpm) |
+        | RHEL/CentOS/Fedora | ARM64 | [\`udp-sender-${{ steps.version.outputs.PKG_VERSION }}-arm64.rpm\`](https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-arm64.rpm) |
         
         #### Standalone Binaries
         
         | Platform | Architecture | Download |
         |----------|--------------|----------|
-        | Linux | AMD64 | \`udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz\` |
-        | Linux | ARM64 | \`udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz\` |
-        | macOS | Intel | \`udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz\` |
-        | macOS | Apple Silicon | \`udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz\` |
+        | Linux | x64 | [\`udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz\`](https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz) |
+        | Linux | ARM64 | [\`udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz\`](https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz) |
+        | macOS | x64 (Intel) | [\`udp-sender-${{ steps.version.outputs.VERSION }}-darwin-x64.tar.gz\`](https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-x64.tar.gz) |
+        | macOS | ARM64 (Apple Silicon) | [\`udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz\`](https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz) |
         
         ### Installation
         
@@ -261,11 +263,15 @@ jobs:
         **Debian/Ubuntu:**
         
         \`\`\`bash
-        # Download the package
-        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-amd64.deb
+        # Download the package and checksum
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.deb
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.deb.sha256
+        
+        # Verify checksum
+        sha256sum -c udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.deb.sha256
         
         # Install (creates udp-senders group automatically)
-        sudo dpkg -i udp-sender-${{ steps.version.outputs.PKG_VERSION }}-amd64.deb
+        sudo dpkg -i udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.deb
         
         # Add your user to the udp-senders group
         sudo usermod -aG udp-senders \$USER
@@ -278,13 +284,17 @@ jobs:
         **RHEL/CentOS/Fedora:**
         
         \`\`\`bash
-        # Download the package
-        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm
+        # Download the package and checksum
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.rpm
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.rpm.sha256
+        
+        # Verify checksum
+        sha256sum -c udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.rpm.sha256
         
         # Install (creates udp-senders group automatically)
-        sudo rpm -i udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm
+        sudo rpm -i udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.rpm
         # or
-        sudo yum install udp-sender-${{ steps.version.outputs.PKG_VERSION }}-1.x86_64.rpm
+        sudo yum install udp-sender-${{ steps.version.outputs.PKG_VERSION }}-x64.rpm
         
         # Add your user to the udp-senders group
         sudo usermod -aG udp-senders \$USER
@@ -297,26 +307,22 @@ jobs:
         #### Manual Installation (All Platforms)
         
         \`\`\`bash
-        # Download and extract (example for Linux AMD64)
-        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
-        tar -xzf udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
+        # Download archive and checksum (example for Linux x64)
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz
+        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz.sha256
+        
+        # Verify checksum before extracting
+        sha256sum -c udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz.sha256
+        
+        # Extract
+        tar -xzf udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz
         
         # Make executable and optionally move to PATH
-        chmod +x udp-sender-linux-amd64
-        sudo mv udp-sender-linux-amd64 /usr/local/bin/udp-sender
+        chmod +x udp-sender-linux-x64
+        sudo mv udp-sender-linux-x64 /usr/local/bin/udp-sender
         
         # For Linux: grant CAP_NET_RAW capability instead of using sudo
         sudo setcap cap_net_raw+ep /usr/local/bin/udp-sender
-        \`\`\`
-        
-        ### Verify Download
-        
-        \`\`\`bash
-        # Download checksum file for your platform (example for Linux AMD64)
-        wget https://github.com/criblio/udp-sender/releases/download/${{ steps.version.outputs.VERSION }}/udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz.sha256
-        
-        # Verify checksum (Linux/macOS)
-        sha256sum -c udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz.sha256
         \`\`\`
         
         ### Requirements
@@ -337,12 +343,12 @@ jobs:
       with:
         body_path: release_notes.md
         files: |
-          dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
-          dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz.sha256
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz.sha256
           dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz
           dist/udp-sender-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz.sha256
-          dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz
-          dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz.sha256
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-x64.tar.gz
+          dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-x64.tar.gz.sha256
           dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz
           dist/udp-sender-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz.sha256
           dist/*.deb
@@ -396,14 +402,14 @@ jobs:
         echo "### Built Artifacts:" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Standalone Binaries:**" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Linux AMD64" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Linux x64" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ Linux ARM64" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ macOS AMD64 (Intel)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ macOS x64 (Intel)" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ macOS ARM64 (Apple Silicon)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Linux Packages:**" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ DEB (amd64, arm64)" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ RPM (x86_64, aarch64)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ DEB (x64, arm64)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ RPM (x64, arm64)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Container Images:**" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ \`ghcr.io/${{ github.repository }}:${{ steps.version.outputs.PKG_VERSION }}\`" >> $GITHUB_STEP_SUMMARY

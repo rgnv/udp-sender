@@ -43,28 +43,28 @@ Install using DEB or RPM packages for easier system integration and management:
 ```bash
 # Debian/Ubuntu
 VERSION=v1.0.0  # Replace with latest version
-wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-amd64.deb
-wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-amd64.deb.sha256
+wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-x64.deb
+wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-x64.deb.sha256
 
 # Verify checksum
-sha256sum -c udp-sender-${VERSION#v}-amd64.deb.sha256
+sha256sum -c udp-sender-${VERSION#v}-x64.deb.sha256
 
 # Install package
-sudo dpkg -i udp-sender-${VERSION#v}-amd64.deb
+sudo dpkg -i udp-sender-${VERSION#v}-x64.deb
 ```
 
 or
 
 ```bash
 # RHEL/CentOS/Fedora
-wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-1.x86_64.rpm
-wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-1.x86_64.rpm.sha256
+wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-x64.rpm
+wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION#v}-x64.rpm.sha256
 
 # Verify checksum
-sha256sum -c udp-sender-${VERSION#v}-1.x86_64.rpm.sha256
+sha256sum -c udp-sender-${VERSION#v}-x64.rpm.sha256
 
 # Install package
-sudo rpm -i udp-sender-${VERSION#v}-1.x86_64.rpm
+sudo rpm -i udp-sender-${VERSION#v}-x64.rpm
 ```
 
 then
@@ -84,28 +84,28 @@ newgrp udp-senders  # Or log out and back in
 
 **Available packages:**
 
-- Debian/Ubuntu: `.deb` packages (AMD64, ARM64)
-- RHEL/CentOS/Fedora: `.rpm` packages (AMD64, ARM64)
+- Debian/Ubuntu: `.deb` packages (x64, ARM64)
+- RHEL/CentOS/Fedora: `.rpm` packages (x64, ARM64)
 
 ### Download Pre-built Binaries
 
 Download standalone binaries for any supported platform from [GitHub Releases](https://github.com/criblio/udp-sender/releases):
 
 ```bash
-# Example: Linux AMD64
+# Example: Linux x64
 VERSION=v1.0.0  # Replace with latest version
-wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION}-linux-amd64.tar.gz
-wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION}-linux-amd64.tar.gz.sha256
+wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION}-linux-x64.tar.gz
+wget https://github.com/criblio/udp-sender/releases/download/${VERSION}/udp-sender-${VERSION}-linux-x64.tar.gz.sha256
 
 # Verify checksum before extracting
-sha256sum -c udp-sender-${VERSION}-linux-amd64.tar.gz.sha256
+sha256sum -c udp-sender-${VERSION}-linux-x64.tar.gz.sha256
 
 # Extract
-tar -xzf udp-sender-${VERSION}-linux-amd64.tar.gz
+tar -xzf udp-sender-${VERSION}-linux-x64.tar.gz
 
 # Make executable and move to PATH
-chmod +x udp-sender-linux-amd64
-sudo mv udp-sender-linux-amd64 /usr/local/bin/udp-sender
+chmod +x udp-sender-linux-x64
+sudo mv udp-sender-linux-x64 /usr/local/bin/udp-sender
 
 # For Linux: Grant CAP_NET_RAW capability (more secure than sudo)
 sudo setcap cap_net_raw+ep /usr/local/bin/udp-sender
@@ -113,8 +113,8 @@ sudo setcap cap_net_raw+ep /usr/local/bin/udp-sender
 
 **Available Platforms:**
 
-- Linux: AMD64 (x86_64), ARM64
-- macOS: AMD64 (Intel), ARM64 (Apple Silicon)
+- Linux: x64, ARM64
+- macOS: x64 (Intel), ARM64 (Apple Silicon)
 
 **Security Note:** Always verify checksums to ensure file integrity and authenticity.
 
@@ -856,14 +856,14 @@ go tool cover -html=coverage.out
 ### Building for All Platforms
 
 ```bash
-# Linux AMD64
-GOOS=linux GOARCH=amd64 go build -o udp-sender-linux-amd64
+# Linux x64
+GOOS=linux GOARCH=amd64 go build -o udp-sender-linux-x64
 
 # Linux ARM64
 GOOS=linux GOARCH=arm64 go build -o udp-sender-linux-arm64
 
-# macOS AMD64 (Intel)
-GOOS=darwin GOARCH=amd64 go build -o udp-sender-darwin-amd64
+# macOS x64 (Intel)
+GOOS=darwin GOARCH=amd64 go build -o udp-sender-darwin-x64
 
 # macOS ARM64 (Apple Silicon)
 GOOS=darwin GOARCH=arm64 go build -o udp-sender-darwin-arm64
@@ -882,7 +882,7 @@ git push origin v1.0.0
 The GitHub Actions workflow will automatically:
 
 1. **Generate a changelog** from commit messages (see [Commit Message Format](#commit-message-format))
-2. Build binaries for Linux (amd64, arm64) and macOS (amd64, arm64)
+2. Build binaries for Linux (x64, arm64) and macOS (x64, arm64)
 3. Create compressed archives (`.tar.gz`) and Linux packages (`.deb`, `.rpm`)
 4. Generate SHA256 checksums for each archive and package
 5. Create a GitHub release with the changelog
