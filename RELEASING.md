@@ -21,9 +21,9 @@ git push origin v1.0.0
 The GitHub Actions workflow (`.github/workflows/release.yml`) will automatically:
 
 1. **Build binaries** for:
-   - Linux AMD64 (x86_64)
+   - Linux x64
    - Linux ARM64
-   - macOS AMD64 (Intel)
+   - macOS x64 (Intel)
    - macOS ARM64 (Apple Silicon)
 
 2. **Create archives**:
@@ -131,11 +131,11 @@ After the release is created:
 
    ```bash
    # Download
-   wget https://github.com/criblio/udp-sender/releases/download/v1.0.0/udp-sender-v1.0.0-linux-amd64.tar.gz
+   wget https://github.com/criblio/udp-sender/releases/download/v1.0.0/udp-sender-v1.0.0-linux-x64.tar.gz
    
    # Extract and test
-   tar -xzf udp-sender-v1.0.0-linux-amd64.tar.gz
-   ./udp-sender-linux-amd64 -h
+   tar -xzf udp-sender-v1.0.0-linux-x64.tar.gz
+   ./udp-sender-linux-x64 -h
    ```
 
 4. **Verify checksums**:
