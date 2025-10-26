@@ -583,3 +583,10 @@ The `UDPSender` class demonstrates proper object-oriented design in Go:
 - ✅ Testable and extensible design
 
 This design provides a clean, maintainable, and professional API for UDP packet sending with IP spoofing capabilities.
+
+## References
+
+- [RFC 791 - Internet Protocol](https://tools.ietf.org/html/rfc791)
+- [RFC 768 - User Datagram Protocol](https://tools.ietf.org/html/rfc768)
+- [RFC 1071 - Computing the Internet Checksum](https://tools.ietf.org/html/rfc1071)
+

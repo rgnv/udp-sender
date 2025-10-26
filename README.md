@@ -75,7 +75,7 @@ sudo usermod -a -G udp-senders $USER
 newgrp udp-senders  # Or log out and back in
 ```
 
-**Benefits:**
+**Benefits (over using pre-built binaries):**
 
 - Automatic capability configuration (`CAP_NET_RAW`)
 - Group-based access control via `udp-senders` group
@@ -105,10 +105,10 @@ tar -xzf udp-sender-${VERSION}-linux-x64.tar.gz
 
 # Make executable and move to PATH
 chmod +x udp-sender-linux-x64
-sudo mv udp-sender-linux-x64 /usr/local/bin/udp-sender
+sudo mv udp-sender-linux-x64 /usr/bin/udp-sender
 
 # For Linux: Grant CAP_NET_RAW capability (more secure than sudo)
-sudo setcap cap_net_raw+ep /usr/local/bin/udp-sender
+sudo setcap cap_net_raw+ep /usr/bin/udp-sender
 ```
 
 **Available Platforms:**
@@ -259,35 +259,6 @@ go run packet-generator.go -ipv6 -base-ip "fe80::1" -dest-ip "::1" \
 cat ipv6-packets.bin | sudo ./udp-sender
 ```
 
-#### Binary Protocol
-
-Each packet in the stream uses this binary format (big endian):
-
-```mermaid
----
-config:
-  packet:
-    showBits: false
----
-packet-beta
-  0-23: "Magic (3B)"
-  24-31: "Version (1B)"
-  32-159: "Source IP (4B/16B)"
-  160-287: "Dest IP (4B/16B)"
-  288-303: "Src Port (2B)"
-  304-319: "Dst Port (2B)"
-  320-335: "Payload Len (2B)"
-  336-399: "Payload (NB)"
-```
-
-**Quick Reference**:
-
-- Magic number (`0xC1 0x21 0xB1`) for synchronization
-- Version byte (`4` = IPv4, `6` = IPv6)
-- Source and destination IP addresses (variable length)
-- Source and destination ports (2 bytes each)
-- Payload length and data (variable)
-
 See [PROTOCOL.md](PROTOCOL.md) for complete protocol specification, field details, error handling, and examples in Python, Node.js, and Go.
 
 ## Development
@@ -334,11 +305,7 @@ go tool cover -html=coverage.out
 ### Running Linter
 
 ```bash
-# Install golangci-lint
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-# Run linter
-golangci-lint run
+make lint
 ```
 
 ### Makefile Targets
@@ -373,151 +340,7 @@ make clean build
 
 ## How It Works
 
-### Object-Oriented Design
-
-The application uses an object-oriented design with proper encapsulation:
-
-- **Interface**: `PacketSender` interface defines the contract
-- **Class**: `UDPSender` struct with private fields implements the interface
-- **Encapsulation**: Private fields accessed only through getter methods
-- **Constructor**: `NewUDPSender` function creates and initializes instances
-- **Methods**: Public methods for sending packets and accessing properties
-
-This design allows for:
-
-- Easy testing through interfaces
-- Future implementations (e.g., TCP sender, mock sender)
-- Clean separation of concerns
-- Type-safe access to properties
-
-### Raw Socket Implementation
-
-This application uses raw sockets to construct UDP packets from scratch:
-
-1. **Raw Socket Creation**: Opens a raw socket with `IPPROTO_RAW`
-2. **IP Header Construction**: Manually builds IPv4 headers with custom source IP
-3. **UDP Header Construction**: Creates UDP headers with custom source port
-4. **Checksum Calculation**: Implements RFC 1071 Internet checksum for both IP and UDP
-5. **Packet Transmission**: Sends complete packets via raw socket
-
-### Packet Structure
-
-```mermaid
-graph TD
-    A["IP Header (20 bytes)<br/>Custom source IP"]
-    B["UDP Header (8 bytes)<br/>Custom source port"]
-    C["Payload<br/>Your message"]
-    
-    A --> B
-    B --> C
-    
-    style A fill:#e1f5ff,stroke:#01579b,stroke-width:2px
-    style B fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style C fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-```
-
-## API Reference
-
-### PacketSender Interface
-
-The `PacketSender` interface defines the contract for UDP packet senders:
-
-```go
-type PacketSender interface {
-    Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) (int, error)
-    Close() error
-}
-```
-
-**Note**: Both source and destination IP and port are specified per packet in the `Send()` method, allowing complete dynamic control.
-
-### UDPSender Class
-
-The `UDPSender` struct implements the `PacketSender` interface and provides raw socket functionality with IP spoofing.
-
-#### Class Structure
-
-```go
-type UDPSender struct {
-    // Private fields (encapsulated)
-    fdIPv4 int
-    fdIPv6 int
-}
-```
-
-**Note**: Both source and destination IP and port are provided per packet to the `Send()` method.
-
-#### Creating a Sender (Constructor)
-
-```go
-// Calculate max payload sizes based on MTU (e.g., 1500 bytes)
-maxPayloadIPv4 := 1500 - 20 - 8  // 1472 bytes
-maxPayloadIPv6 := 1500 - 40 - 8  // 1452 bytes
-
-// Create sender with MTU-based payload limits
-sender, err := NewUDPSender(maxPayloadIPv4, maxPayloadIPv6)
-if err != nil {
-    log.Fatal(err)
-}
-defer sender.Close()
-```
-
-#### Sending Messages
-
-The sender is designed to work with the binary protocol for streaming packets. Each packet specifies its own source and destination addresses:
-
-```go
-// Send with source and destination specified per packet
-n, err := sender.Send(
-    "Hello, UDP!",          // message
-    net.ParseIP("10.0.0.50"),      // source IP (spoofed)
-    12345,                  // source port (spoofed)
-    net.ParseIP("192.168.1.100"),  // destination IP
-    514,                    // destination port
-)
-if err != nil {
-    log.Fatal(err)
-}
-fmt.Printf("Sent %d bytes\n", n)
-```
-
-#### Dynamic Spoofing
-
-```go
-// Change source AND destination for each packet
-sender.Send("Packet 1", net.ParseIP("10.0.0.1"), 5001, net.ParseIP("192.168.1.100"), 514)
-sender.Send("Packet 2", net.ParseIP("10.0.0.2"), 5002, net.ParseIP("192.168.1.101"), 514)
-sender.Send("Packet 3", net.ParseIP("10.0.0.3"), 5003, net.ParseIP("192.168.1.102"), 8080)
-```
-
-#### Closing the Connection
-
-```go
-err := sender.Close()
-if err != nil {
-    log.Fatal(err)
-}
-```
-
-#### Using as Interface
-
-```go
-// Function that accepts any PacketSender implementation
-func sendPacket(ps PacketSender, message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16) error {
-    n, err := ps.Send(message, srcIP, srcPort, destIP, destPort)
-    if err != nil {
-        return err
-    }
-    fmt.Printf("Sent %d bytes from %s:%d to %s:%d\n",
-        n, srcIP, srcPort, destIP, destPort)
-    return nil
-}
-
-// Usage
-sender, _ := NewUDPSender(1472, 1452)  // Standard MTU limits
-defer sender.Close()
-sendPacket(sender, "Hello, World!", net.ParseIP("10.0.0.1"), 12345, net.ParseIP("192.168.1.100"), 514)
-```
+See [DESIGN.md](./DESIGN.md) for details of the design.
 
 ## Security Considerations
 
@@ -746,41 +569,6 @@ The codebase is organized into focused modules:
 - **Dockerfile** - Container image for isolated execution
 - **DESIGN.md**, **PROTOCOL.md**, **TESTING.md**, **LOGGING.md**, **RELEASING.md** - Documentation
 
-## Technical Details
-
-### Class Methods
-
-| Method | Description | Returns |
-|--------|-------------|---------|
-| `NewUDPSender(maxPayloadIPv4, maxPayloadIPv6 int)` | Constructor - creates new instance with MTU-based limits | `*UDPSender, error` |
-| `Send(message string, srcIP net.IP, srcPort uint16, destIP net.IP, destPort uint16)` | Sends a UDP packet with specified source and destination | `int, error` |
-| `Close()` | Closes the raw socket | `error` |
-
-**Key Design**: Both source and destination IP and port are parameters to `Send()`, allowing complete dynamic control per packet.
-
-### IP Header Fields
-
-- Version: IPv4 (4)
-- IHL: 5 (20 bytes)
-- TTL: 64
-- Protocol: UDP (17)
-- Checksum: Calculated per RFC 791
-- Source/Destination IPs: Configurable
-
-### UDP Header Fields
-
-- Source/Destination Ports: Configurable
-- Length: Calculated (header + payload)
-- Checksum: Calculated with pseudo-header per RFC 768
-
-### Checksum Algorithm
-
-Implements RFC 1071 Internet Checksum:
-
-1. Sum all 16-bit words
-2. Add carry bits
-3. Take one's complement
-
 ## Contributing
 
 1. Fork the repository
@@ -871,25 +659,6 @@ GOOS=darwin GOARCH=arm64 go build -o udp-sender-darwin-arm64
 
 ### Creating a Release
 
-Releases are automatically built and published when a new tag is pushed:
-
-```bash
-# Create and push a tag
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The GitHub Actions workflow will automatically:
-
-1. **Generate a changelog** from commit messages (see [Commit Message Format](#commit-message-format))
-2. Build binaries for Linux (x64, arm64) and macOS (x64, arm64)
-3. Create compressed archives (`.tar.gz`) and Linux packages (`.deb`, `.rpm`)
-4. Generate SHA256 checksums for each archive and package
-5. Create a GitHub release with the changelog
-6. Upload all artifacts
-
-The changelog will include all commits since the previous release, automatically categorized by type (features, fixes, etc.) based on conventional commit format.
-
 See [RELEASING.md](RELEASING.md) for detailed release instructions.
 
 ## License
@@ -901,9 +670,3 @@ Copyright (c) 2025 Cribl, Inc.
 ## Disclaimer
 
 This software is provided for educational and testing purposes only. Users are responsible for ensuring their use complies with applicable laws and regulations. The authors assume no liability for misuse of this software.
-
-## References
-
-- [RFC 791 - Internet Protocol](https://tools.ietf.org/html/rfc791)
-- [RFC 768 - User Datagram Protocol](https://tools.ietf.org/html/rfc768)
-- [RFC 1071 - Computing the Internet Checksum](https://tools.ietf.org/html/rfc1071)
