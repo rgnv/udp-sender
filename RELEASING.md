@@ -1,9 +1,5 @@
 # Release Process
 
-This document describes how to create a new release of UDP Sender.
-
-## Automated Release (Recommended)
-
 The project uses GitHub Actions for automated releases. Simply push a new tag:
 
 ```bash
@@ -43,41 +39,6 @@ The GitHub Actions workflow (`.github/workflows/release.yml`) will automatically
    - Release is immediately available
    - Badges and links are automatically updated
 
-## Manual Release (Alternative)
-
-If you prefer to use GoReleaser locally:
-
-### Prerequisites
-
-```bash
-# Install GoReleaser
-brew install goreleaser
-
-# Or using Go
-go install github.com/goreleaser/goreleaser@latest
-```
-
-### Steps
-
-1. **Set up GitHub token**:
-
-   ```bash
-   export GITHUB_TOKEN="your_github_personal_access_token"
-   ```
-
-2. **Create and push tag**:
-
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-
-3. **Run GoReleaser**:
-
-   ```bash
-   goreleaser release --clean
-   ```
-
 ## Versioning
 
 This project follows [Semantic Versioning](https://semver.org/):
@@ -108,12 +69,11 @@ These will be marked as "pre-release" on GitHub.
 
 Before creating a release:
 
-- [ ] All tests pass: `go test ./...`
-- [ ] Code is linted: `golangci-lint run`
+- [ ] All tests pass: `sudo make test-root`
+- [ ] Code is linted: `make lint`
 - [ ] Documentation is updated (README.md, PROTOCOL.md)
-- [ ] CHANGELOG.md is updated (if applicable)
 - [ ] Version number follows semantic versioning
-- [ ] All changes are committed and pushed to master
+- [ ] All changes are committed and pushed to main
 
 ## Verifying a Release
 
@@ -140,9 +100,57 @@ After the release is created:
 
 4. **Verify checksums**:
 
+   Each release artifact includes a corresponding `.sha256` file for verification.
+
+   **For standalone binaries:**
+
    ```bash
-   wget https://github.com/criblio/udp-sender/releases/download/v1.0.0/checksums.txt
-   sha256sum -c checksums.txt --ignore-missing
+   # Download the archive and its checksum
+   wget https://github.com/criblio/udp-sender/releases/download/v1.0.0/udp-sender-v1.0.0-linux-x64.tar.gz
+   wget https://github.com/criblio/udp-sender/releases/download/v1.0.0/udp-sender-v1.0.0-linux-x64.tar.gz.sha256
+   
+   # Verify the checksum
+   sha256sum -c udp-sender-v1.0.0-linux-x64.tar.gz.sha256
+   ```
+
+   Expected output:
+
+   ```text
+   udp-sender-v1.0.0-linux-x64.tar.gz: OK
+   ```
+
+   **For Linux packages (DEB/RPM):**
+
+   ```bash
+   # Download the package and its checksum
+   wget https://github.com/criblio/udp-sender/releases/download/v1.0.0/udp-sender-1.0.0-x64.deb
+   wget https://github.com/criblio/udp-sender/releases/download/v1.0.0/udp-sender-1.0.0-x64.deb.sha256
+   
+   # Verify the checksum
+   sha256sum -c udp-sender-1.0.0-x64.deb.sha256
+   ```
+
+   **On macOS**, use `shasum` instead:
+
+   ```bash
+   # Download macOS archive and checksum
+   curl -LO https://github.com/criblio/udp-sender/releases/download/v1.0.0/udp-sender-v1.0.0-darwin-arm64.tar.gz
+   curl -LO https://github.com/criblio/udp-sender/releases/download/v1.0.0/udp-sender-v1.0.0-darwin-arm64.tar.gz.sha256
+   
+   # Verify the checksum
+   shasum -a 256 -c udp-sender-v1.0.0-darwin-arm64.tar.gz.sha256
+   ```
+
+   **Manual verification** (if you prefer to compare checksums yourself):
+
+   ```bash
+   # Calculate checksum
+   sha256sum udp-sender-v1.0.0-linux-x64.tar.gz
+   
+   # Display expected checksum
+   cat udp-sender-v1.0.0-linux-x64.tar.gz.sha256
+   
+   # The two checksums should match exactly
    ```
 
 ## Troubleshooting

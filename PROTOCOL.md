@@ -65,8 +65,8 @@ The magic number serves several important purposes:
 
 #### Version (1 byte)
 
-- `4` = IPv4 packet (source IP will be 4 bytes)
-- `6` = IPv6 packet (source IP will be 16 bytes)
+- `0x04` = IPv4 packet (source/destination IPs will be 4 bytes)
+- `0x06` = IPv6 packet (source/destination IPs will be 16 bytes)
 - Any other value is invalid
 
 #### Source IP (4 or 16 bytes)
