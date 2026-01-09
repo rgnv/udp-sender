@@ -22,12 +22,16 @@ func TestNewUDPSender(t *testing.T) {
 	}
 	defer func() { _ = sender.Close() }()
 
-	// Verify both socket file descriptors are valid
+	// Verify IPv4 socket file descriptor is valid (required)
 	if sender.fdIPv4 < 0 {
 		t.Error("IPv4 socket file descriptor is invalid")
 	}
+
+	// IPv6 socket is optional - log whether it's available
 	if sender.fdIPv6 < 0 {
-		t.Error("IPv6 socket file descriptor is invalid")
+		t.Log("IPv6 socket not available (this is acceptable)")
+	} else {
+		t.Log("IPv6 socket is available")
 	}
 }
 
@@ -206,6 +210,20 @@ func TestUDPSender_Send_ErrorCases(t *testing.T) {
 				t.Error("Expected error, got nil")
 			} else if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("Expected error containing %q, got %q", tt.wantErr, err.Error())
+			}
+		})
+	}
+
+	// Test IPv6 unavailable error separately, only if IPv6 is not available
+	if sender.fdIPv6 < 0 {
+		t.Run("IPv6 unavailable", func(t *testing.T) {
+			srcIP := net.ParseIP("2001:db8::1")
+			destIP := net.ParseIP("2001:db8::2")
+			_, err := sender.Send("test", srcIP, 1234, destIP, 53)
+			if err == nil {
+				t.Error("Expected error for IPv6 when unavailable, got nil")
+			} else if !strings.Contains(err.Error(), "IPv6 is not available") {
+				t.Errorf("Expected 'IPv6 is not available' error, got %q", err.Error())
 			}
 		})
 	}

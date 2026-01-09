@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `UDPSender` is implemented as a Go class using idiomatic Go patterns: structs with methods, interfaces, and proper encapsulation. The key design feature is **per-packet source and destination address specification**, allowing complete dynamic control of both source and destination IP and port for each transmitted packet. The implementation supports both IPv4 and IPv6 through separate raw sockets.
+The `UDPSender` is implemented as a Go class using idiomatic Go patterns: structs with methods, interfaces, and proper encapsulation. The key design feature is **per-packet source and destination address specification**, allowing complete dynamic control of both source and destination IP and port for each transmitted packet. The implementation supports both IPv4 and IPv6 through separate raw sockets. IPv6 support is optional - if IPv6 is unavailable on the host, the sender will operate in IPv4-only mode.
 
 ```mermaid
 graph TD
@@ -107,7 +107,7 @@ Benefits:
 - Validation before object creation
 - Complex initialization logic
 - Returns errors instead of invalid objects
-- Resource acquisition (creates both IPv4 and IPv6 raw sockets)
+- Resource acquisition (creates IPv4 raw socket, IPv6 socket if available)
 - MTU configuration for payload validation
 - No destination needed (both source and destination specified per packet)
 
@@ -229,7 +229,8 @@ graph TB
 maxPayloadIPv4 := 1500 - 20 - 8  // 1472 bytes
 maxPayloadIPv6 := 1500 - 40 - 8  // 1452 bytes
 
-// Create sender with MTU-based payload limits (creates both IPv4 and IPv6 sockets)
+// Create sender with MTU-based payload limits
+// Creates IPv4 socket (required) and IPv6 socket (if available)
 sender, err := NewUDPSender(maxPayloadIPv4, maxPayloadIPv6)
 if err != nil {
     log.Fatal(err)
@@ -253,7 +254,7 @@ sender.Send("Packet 1", net.ParseIP("10.0.0.1"), 5001, net.ParseIP("192.168.1.10
 sender.Send("Packet 2", net.ParseIP("10.0.0.2"), 5002, net.ParseIP("192.168.1.101"), 514)
 sender.Send("Packet 3", net.ParseIP("192.168.1.5"), 6000, net.ParseIP("10.0.0.1"), 8080)
 
-// IPv6 works too
+// IPv6 works too (if available on the host)
 sender.Send("IPv6 Packet", net.ParseIP("2001:db8::1"), 5000, net.ParseIP("2001:db8::100"), 8080)
 ```
 

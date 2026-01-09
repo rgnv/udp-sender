@@ -46,6 +46,11 @@ func hasIPv6() bool {
 	}
 	defer func() { _ = sender.Close() }()
 
+	// Check if the sender actually has an IPv6 socket
+	if sender.fdIPv6 < 0 {
+		return false
+	}
+
 	// Try sending a small test packet to ::1 (localhost)
 	srcIP := net.ParseIP("::1")
 	destIP := net.ParseIP("::1")

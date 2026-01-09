@@ -29,7 +29,7 @@ var _ PacketSender = (*UDPSender)(nil)
 // NewUDPSender creates a new UDP sender with raw socket support
 // Both source and destination IP and port are specified per-packet in the Send() method
 // Requires root/admin privileges to create raw sockets
-// Supports both IPv4 and IPv6
+// Supports both IPv4 and IPv6 (IPv6 is optional - if unavailable, only IPv4 will work)
 // maxPayloadIPv4 and maxPayloadIPv6 specify the maximum payload sizes based on MTU
 func NewUDPSender(maxPayloadIPv4, maxPayloadIPv6 int) (*UDPSender, error) {
 	sender := &UDPSender{
@@ -54,17 +54,16 @@ func NewUDPSender(maxPayloadIPv4, maxPayloadIPv6 int) (*UDPSender, error) {
 
 	sender.fdIPv4 = fd4
 
-	// Create IPv6 socket
+	// Create IPv6 socket (optional - failure is tolerated)
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		// Clean up IPv4 socket
-		_ = syscall.Close(sender.fdIPv4)
-		return nil, fmt.Errorf("failed to create raw IPv6 socket (requires root): %w", err)
+		// IPv6 not available - this is acceptable, just log and continue with IPv4 only
+		// The sender will return an error if someone tries to send IPv6 packets
+	} else {
+		// Note: IPv6 raw sockets don't require IPV6_HDRINCL on most systems
+		// The kernel automatically sets the next header field
+		sender.fdIPv6 = fd6
 	}
-	// Note: IPv6 raw sockets don't require IPV6_HDRINCL on most systems
-	// The kernel automatically sets the next header field
-
-	sender.fdIPv6 = fd6
 
 	return sender, nil
 }
@@ -122,6 +121,11 @@ func (s *UDPSender) Send(message string, srcIP net.IP, srcPort uint16, destIP ne
 
 	// Check if both are IPv6
 	if !isSrcIPv4 && !isDestIPv4 {
+		// Check if IPv6 is available
+		if s.fdIPv6 < 0 {
+			return 0, fmt.Errorf("IPv6 is not available on this system")
+		}
+
 		// Use IPv6
 		packet := s.buildPacket(payload, srcIP, srcPort, destIP, destPort)
 
