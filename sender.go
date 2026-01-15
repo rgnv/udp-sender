@@ -57,7 +57,7 @@ func NewUDPSender(maxPayloadIPv4, maxPayloadIPv6 int) (*UDPSender, error) {
 	// Create IPv6 socket (optional - failure is tolerated)
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		// IPv6 not available - this is acceptable, just log and continue with IPv4 only
+		// IPv6 not available - continue with IPv4 only
 		// The sender will return an error if someone tries to send IPv6 packets
 	} else {
 		// Note: IPv6 raw sockets don't require IPV6_HDRINCL on most systems
