@@ -89,6 +89,11 @@ func (s *UDPSender) Send(message string, srcIP net.IP, srcPort uint16, destIP ne
 	isSrcIPv4 := srcIPv4 != nil
 	isDestIPv4 := destIPv4 != nil
 
+	// Check IPv6 availability early
+	if !isSrcIPv4 && !isDestIPv4 && s.fdIPv6 < 0 {
+		return 0, fmt.Errorf("IPv6 is not available on this system")
+	}
+
 	// Validate payload size against MTU limits
 	maxPayload := s.maxPayloadIPv4
 	ipVersion := "IPv4"
@@ -121,11 +126,6 @@ func (s *UDPSender) Send(message string, srcIP net.IP, srcPort uint16, destIP ne
 
 	// Check if both are IPv6
 	if !isSrcIPv4 && !isDestIPv4 {
-		// Check if IPv6 is available
-		if s.fdIPv6 < 0 {
-			return 0, fmt.Errorf("IPv6 is not available on this system")
-		}
-
 		// Use IPv6
 		packet := s.buildPacket(payload, srcIP, srcPort, destIP, destPort)
 
