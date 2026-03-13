@@ -5,7 +5,7 @@ VERSION ?= dev
 
 # Build the application
 build:
-	go build -ldflags="-X main.Version=$(VERSION)" -o udp-sender .
+	CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=$(VERSION)" -o udp-sender .
 
 # Run tests (without root - some tests will skip)
 test:
