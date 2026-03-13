@@ -569,6 +569,32 @@ The codebase is organized into focused modules:
 - **Dockerfile** - Container image for isolated execution
 - **DESIGN.md**, **PROTOCOL.md**, **TESTING.md**, **LOGGING.md**, **RELEASING.md** - Documentation
 
+## SNMP Trap Support
+
+udp-sender supports sending SNMP trap packets (v1, v2c, v3) with full IP/port spoofing. See [SNMP.md](SNMP.md) for complete documentation.
+
+### Quick Examples
+
+```bash
+# Generate and send SNMPv2c traps (same flow as syslog -- generator | udp-sender)
+go run snmp-trap-generator.go -version 2c -count 100 \
+  -dest-ip 192.168.1.100 -dest-port 162 | sudo ./udp-sender
+
+# SNMPv3 with SHA auth and AES encryption
+go run snmp-trap-generator.go -version 3 -count 10 \
+  -dest-ip 192.168.1.100 -security-name myuser \
+  -auth-proto SHA -auth-pass "myauthpass123456" \
+  -priv-proto AES -priv-pass "myprivpass123456" | sudo ./udp-sender
+```
+
+### SNMP Versions Supported
+
+- **SNMPv1** -- Classic trap format with enterprise OID, generic/specific trap types
+- **SNMPv2c** -- Modern trap PDU with community string
+- **SNMPv3** -- USM security: NoAuth/NoPriv, Auth/NoPriv (MD5, SHA, SHA256, SHA384, SHA512), Auth/Priv (DES, AES, AES192, AES256)
+
+SNMP encoding uses [gosnmp](https://github.com/gosnmp/gosnmp) (BSD license).
+
 ## Contributing
 
 1. Fork the repository
