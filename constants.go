@@ -44,3 +44,32 @@ const (
 	// MaxPayloadIPv6: 1500 - 40 (IPv6 header) - 8 (UDP header) = 1452 bytes max payload
 	MaxPayloadIPv6 = 1452
 )
+
+// SNMP trap constants
+const (
+	// DefaultSNMPTrapPort is the standard SNMP trap receiver port
+	DefaultSNMPTrapPort = 162
+
+	// DefaultSNMPCommunity is the default community string for v1/v2c
+	DefaultSNMPCommunity = "public"
+
+	// DefaultSNMPEngineID is a default engine ID for v3 traps
+	DefaultSNMPEngineID = "udp-sender"
+)
+
+// Common SNMP OIDs
+const (
+	OIDSysUpTime   = "1.3.6.1.2.1.1.3.0"
+	OIDSnmpTrapOID = "1.3.6.1.6.3.1.1.4.1.0"
+	OIDColdStart   = "1.3.6.1.6.3.1.1.5.1"
+	OIDWarmStart   = "1.3.6.1.6.3.1.1.5.2"
+	OIDLinkDown    = "1.3.6.1.6.3.1.1.5.3"
+	OIDLinkUp      = "1.3.6.1.6.3.1.1.5.4"
+	OIDAuthFailure = "1.3.6.1.6.3.1.1.5.5"
+	OIDEnterprise  = "1.3.6.1.4.1.99999"
+	OIDSysDescr    = "1.3.6.1.2.1.1.1.0"
+	OIDSysObjectID = "1.3.6.1.2.1.1.2.0"
+	OIDSysContact  = "1.3.6.1.2.1.1.4.0"
+	OIDSysName     = "1.3.6.1.2.1.1.5.0"
+	OIDSysLocation = "1.3.6.1.2.1.1.6.0"
+)
