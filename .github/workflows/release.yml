@@ -323,7 +323,6 @@ jobs:
           IS_PRE="${{ steps.version.outputs.IS_PRERELEASE }}"
 
           {
-            echo "RELEASE_NOTES<<EOF"
             echo "## UDP Sender $V"
             echo ""
 
@@ -448,7 +447,6 @@ jobs:
             echo "- **Windows**: Not supported (use WSL2 or Docker)"
             echo ""
             echo "See the [README](https://github.com/criblio/udp-sender/blob/master/README.md) for full documentation."
-            echo "EOF"
           } > release_notes.md
 
           echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
