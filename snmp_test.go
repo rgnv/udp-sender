@@ -64,6 +64,19 @@ func TestBuildSNMPv1TrapPDU(t *testing.T) {
 			t.Fatal("expected non-empty bytes")
 		}
 	})
+
+	t.Run("v1 trap with IPv6 agent address", func(t *testing.T) {
+		data, err := buildSNMPv1TrapPDU("public", OIDEnterprise, "2001:db8::1", 6, 1, 12345, nil)
+		if err != nil {
+			t.Fatalf("buildSNMPv1TrapPDU() with IPv6 agent error: %v", err)
+		}
+		if len(data) == 0 {
+			t.Fatal("expected non-empty bytes for IPv6 agent")
+		}
+		if data[0] != 0x30 {
+			t.Errorf("expected SEQUENCE tag 0x30, got 0x%02X", data[0])
+		}
+	})
 }
 
 func TestBuildSNMPv2cTrapPDU(t *testing.T) {
@@ -113,6 +126,16 @@ func TestBuildSNMPv2cTrapPDU(t *testing.T) {
 			if len(data) == 0 {
 				t.Fatalf("buildSNMPv2cTrapPDU(%s) returned empty", oid)
 			}
+		}
+	})
+
+	t.Run("v2c trap with empty community", func(t *testing.T) {
+		data, err := buildSNMPv2cTrapPDU("", OIDColdStart, 100, defaultVarbinds())
+		if err != nil {
+			t.Fatalf("buildSNMPv2cTrapPDU() with empty community error: %v", err)
+		}
+		if len(data) == 0 {
+			t.Fatal("expected non-empty bytes with empty community")
 		}
 	})
 }
@@ -225,6 +248,23 @@ func TestBuildSNMPv3TrapPDU(t *testing.T) {
 		}
 		if len(data) == 0 {
 			t.Fatal("returned empty bytes")
+		}
+	})
+
+	t.Run("v3 noauth+priv rejected", func(t *testing.T) {
+		secParams := SNMPv3SecurityParams{
+			UserName:     "testuser",
+			AuthProtocol: g.NoAuth,
+			PrivProtocol: g.AES,
+			PrivPassphrase: "privatekey12345",
+			EngineID:     "test-engine",
+		}
+		_, err := buildSNMPv3TrapPDU(secParams, OIDColdStart, 100, defaultVarbinds())
+		if err == nil {
+			t.Fatal("expected error for NoAuth + Priv combination")
+		}
+		if !strings.Contains(err.Error(), "privacy requires authentication") {
+			t.Errorf("expected privacy-requires-auth error, got: %v", err)
 		}
 	})
 }

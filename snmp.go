@@ -109,6 +109,9 @@ func buildSNMPv3TrapPDU(secParams SNMPv3SecurityParams, trapOID string, timestam
 	if secParams.UserName == "" {
 		return nil, fmt.Errorf("SNMPv3 trap requires a security username")
 	}
+	if secParams.AuthProtocol == g.NoAuth && secParams.PrivProtocol != g.NoPriv {
+		return nil, fmt.Errorf("SNMPv3 privacy requires authentication (cannot use PrivProtocol without AuthProtocol)")
+	}
 
 	// v3 traps have same varbind structure as v2c
 	pdus := make([]g.SnmpPDU, 0, len(varbinds)+2)
