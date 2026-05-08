@@ -1,16 +1,16 @@
 class UdpSender < Formula
   desc "UDP packet sender with IP/port spoofing support"
   homepage "https://github.com/criblio/udp-sender"
-  version "VERSION_PLACEHOLDER"
+  version "1.0.3"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/criblio/udp-sender/releases/download/TAG_PLACEHOLDER/udp-sender-TAG_PLACEHOLDER-darwin-arm64.tar.gz"
-      sha256 "ARM64_SHA_PLACEHOLDER"
+      url "https://github.com/criblio/udp-sender/releases/download/v1.0.3/udp-sender-v1.0.3-darwin-arm64.tar.gz"
+      sha256 "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
     else
-      url "https://github.com/criblio/udp-sender/releases/download/TAG_PLACEHOLDER/udp-sender-TAG_PLACEHOLDER-darwin-x64.tar.gz"
-      sha256 "X64_SHA_PLACEHOLDER"
+      url "https://github.com/criblio/udp-sender/releases/download/v1.0.3/udp-sender-v1.0.3-darwin-x64.tar.gz"
+      sha256 "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
     end
   end
 
