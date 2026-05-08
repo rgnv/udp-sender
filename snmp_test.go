@@ -253,11 +253,11 @@ func TestBuildSNMPv3TrapPDU(t *testing.T) {
 
 	t.Run("v3 noauth+priv rejected", func(t *testing.T) {
 		secParams := SNMPv3SecurityParams{
-			UserName:     "testuser",
-			AuthProtocol: g.NoAuth,
-			PrivProtocol: g.AES,
+			UserName:       "testuser",
+			AuthProtocol:   g.NoAuth,
+			PrivProtocol:   g.AES,
 			PrivPassphrase: "privatekey12345",
-			EngineID:     "test-engine",
+			EngineID:       "test-engine",
 		}
 		_, err := buildSNMPv3TrapPDU(secParams, OIDColdStart, 100, defaultVarbinds())
 		if err == nil {
