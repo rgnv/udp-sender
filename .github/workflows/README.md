@@ -12,9 +12,13 @@ This directory contains GitHub Actions workflows for CI/CD.
 
 **Jobs**:
 
-- **Test**: Runs tests on Go 1.24 and 1.25
-- **Build**: Verifies the project builds successfully
-- **Lint**: Runs golangci-lint for code quality
+| Job | Purpose |
+|---|---|
+| `test-unit` | Unit tests on Go 1.24 and 1.25 (short mode, `-race`) |
+| `test-integration` | Integration tests with `NET_RAW` + `NET_ADMIN` capabilities in container |
+| `build` | Verifies the project builds successfully |
+| `lint` | Runs golangci-lint for code quality |
+| `benchmark` | Runs benchmarks and tracks performance history |
 
 **Status Badge**:
 
@@ -24,62 +28,63 @@ This directory contains GitHub Actions workflows for CI/CD.
 
 ### Release Workflow (`release.yml`)
 
-**Trigger**: Push tags matching `v*.*.*` (e.g., `v1.0.0`)
+**Trigger**: Push tags matching `v*.*.*` (e.g., `v1.0.3`)
 
-**Purpose**: Automated binary releases
+**Purpose**: Automated release pipeline with 6 parallelizable jobs
 
 **Jobs**:
 
-- **Build**: Cross-compiles binaries for:
-  - Linux x64
-  - Linux ARM64
-  - macOS x64 (Intel)
-  - macOS ARM64 (Apple Silicon)
-- **Archive**: Creates `.tar.gz` archives for each binary
-- **Packages**: Builds DEB and RPM packages for Linux
-- **Checksum**: Generates SHA256 checksums for all artifacts
-- **Docker**: Builds and pushes multi-arch container images to GitHub Container Registry
-- **Release**: Creates GitHub release with all artifacts
+| Job | Depends On | Purpose |
+|---|---|---|
+| `test` | — | Gate: `go test -v ./...` must pass |
+| `build` | `test` | Cross-compiles 4 binaries, creates `.tar.gz` archives + SHA256 checksums, builds DEB/RPM packages via `fpm` |
+| `docker` | `test` | Builds and pushes multi-arch Docker images (`linux/amd64`, `linux/arm64`) to `ghcr.io` |
+| `release` | `build`, `docker` | Generates changelog from conventional commits, creates GitHub Release with all artifacts |
+| `homebrew` | `release` | Downloads macOS binaries, computes SHA256, updates `Formula/udp-sender.rb`, commits back to repo |
+| `summary` | `release`, `homebrew` | Prints release summary to GitHub Actions job summary |
+
+**Pre-release detection**: Tags containing `-` (e.g., `v1.0.3-beta.1`) are automatically marked as pre-releases.
 
 **Outputs**:
 
-- `udp-sender-v1.0.0-linux-x64.tar.gz`
-- `udp-sender-v1.0.0-linux-arm64.tar.gz`
-- `udp-sender-v1.0.0-darwin-x64.tar.gz`
-- `udp-sender-v1.0.0-darwin-arm64.tar.gz`
-- `udp-sender_1.0.0_x64.deb`, `udp-sender_1.0.0_arm64.deb`
-- `udp-sender-1.0.0-x64.rpm`, `udp-sender-1.0.0-arm64.rpm`
-- Individual SHA256 checksums (`.sha256`) for each file
-- Combined `checksums.txt`
-- Docker images: `ghcr.io/criblio/udp-sender:1.0.0`, `ghcr.io/criblio/udp-sender:latest`
+| Type | Files |
+|---|---|
+| Standalone archives | `udp-sender-{VERSION}-{linux\|darwin}-{x64\|arm64}.tar.gz` + `.sha256` |
+| DEB packages | `udp-sender-{PKG_VERSION}-{x64\|arm64}.deb` + `.sha256` |
+| RPM packages | `udp-sender-{PKG_VERSION}-{x64\|arm64}.rpm` + `.sha256` |
+| Checksums | Individual `.sha256` files + combined `checksums.txt` |
+| Docker images | `ghcr.io/criblio/udp-sender:{version}`, `latest`, `{major}.{minor}`, `{major}` |
+| Homebrew | `Formula/udp-sender.rb` (auto-updated with new version + SHA256) |
 
 ## Creating a Release
 
-1. Ensure all changes are committed and pushed
+1. Ensure all changes are committed and pushed to `master`
 2. Create and push a tag:
 
    ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
+   # Stable release
+   git tag v1.0.3
+   git push origin v1.0.3
+
+   # Pre-release
+   git tag v1.0.3-beta.1
+   git push origin v1.0.3-beta.1
    ```
 
 3. GitHub Actions automatically builds and releases
-4. Check the release at: <https://github.com/criblio/udp-sender/releases>
+4. Check the release at: https://github.com/criblio/udp-sender/releases
 
 ## Permissions
 
-The workflows require the following permissions:
-
-- **CI**: Read access to repository
-- **Release**:
-  - Write access to `contents` for creating releases
-  - Write access to `packages` for publishing container images
-
-These are automatically granted by `GITHUB_TOKEN`.
+| Workflow | Permissions |
+|---|---|
+| CI | `contents: read` (default) |
+| Release — `test`, `build`, `docker`, `release` | `contents: write`, `packages: write` |
+| Release — `homebrew` | `contents: write` (to commit formula update) |
 
 ## Docker Images
 
-Container images are published to GitHub Container Registry (ghcr.io) with each release:
+Container images are published to GitHub Container Registry (`ghcr.io`) with each release:
 
 ```bash
 # Pull and run the latest version
@@ -87,23 +92,31 @@ docker pull ghcr.io/criblio/udp-sender:latest
 cat packets.bin | docker run --rm -i --cap-add=NET_RAW ghcr.io/criblio/udp-sender:latest
 
 # Pull a specific version
-docker pull ghcr.io/criblio/udp-sender:1.0.0
+docker pull ghcr.io/criblio/udp-sender:1.0.3
 ```
 
 **Tags:**
 
-- `latest` - Most recent release
-- `X.Y.Z` - Specific version (e.g., `1.0.0`)
-- `X.Y` - Minor version (e.g., `1.0`)
-- `X` - Major version (e.g., `1`)
+- `latest` — Most recent stable release
+- `X.Y.Z` — Specific version (e.g., `1.0.3`)
+- `X.Y` — Minor version (e.g., `1.0`)
+- `X` — Major version (e.g., `1`)
 
-**Architectures:**
+**Architectures:** `linux/amd64`, `linux/arm64`
 
-- `linux/amd64`
-- `linux/arm64`
+View images at: https://github.com/criblio/udp-sender/pkgs/container/udp-sender
 
-View images at: <https://github.com/criblio/udp-sender/pkgs/container/udp-sender>
+## Homebrew
+
+macOS users can install via Homebrew using the formula in this repo:
+
+```bash
+brew tap criblio/udp-sender
+brew install udp-sender
+```
+
+The formula (`Formula/udp-sender.rb`) supports both Intel and Apple Silicon Macs, with SHA256 verification for each architecture. It is automatically updated by the release workflow — no manual maintenance required.
 
 ## Monitoring
 
-View workflow runs at: <https://github.com/criblio/udp-sender/actions>
+View workflow runs at: https://github.com/criblio/udp-sender/actions
