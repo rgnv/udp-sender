@@ -39,8 +39,8 @@ coverage-root:
 lint:
 	@GOLANGCI_LINT=$$(command -v golangci-lint 2>/dev/null || echo "$$(go env GOPATH)/bin/golangci-lint"); \
 	if [ ! -x "$$GOLANGCI_LINT" ]; then \
-		echo "golangci-lint not found. Installing v1.62.2..."; \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.62.2; \
+		echo "golangci-lint not found. Installing v1.64.8..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.64.8; \
 		GOLANGCI_LINT="$$(go env GOPATH)/bin/golangci-lint"; \
 	fi; \
 	$$GOLANGCI_LINT run

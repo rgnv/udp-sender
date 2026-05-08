@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*.*.*'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
   packages: write
@@ -312,6 +315,8 @@ jobs:
 
       - name: Create Release Notes
         id: release_notes
+        env:
+          CHANGELOG: ${{ steps.changelog.outputs.CHANGELOG }}
         run: |
           V="${{ steps.version.outputs.VERSION }}"
           PV="${{ steps.version.outputs.PKG_VERSION }}"
@@ -327,7 +332,7 @@ jobs:
               echo ""
             fi
 
-            echo '${{ steps.changelog.outputs.CHANGELOG }}'
+            printf '%s\n' "$CHANGELOG"
             echo ""
             echo "### Downloads"
             echo ""
